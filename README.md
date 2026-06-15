@@ -1,4 +1,4 @@
-# ralph-gateway
+# kami-gateway
 
 A tiny, privacy-first AI gateway you talk to **only over Telegram**. One user,
 one chat, Gemini only. The model gets a `SOUL.md` (its system prompt, which it
@@ -6,14 +6,14 @@ can rewrite), a sandboxed `workspace/` it can't escape, and a few tools defined
 in `tools.json` (which it can also edit). No Docker, no database, no web UI,
 zero external Go dependencies.
 
-Built in the "Ralph" spirit: one bounded agent loop, no cleverness. Improve it
+Built in the "Kami" spirit: one bounded agent loop, no cleverness. Improve it
 as you use it.
 
 ## Layout
 
 ```
-$RALPH_HOME (default: the current directory)
-├── ralph-gateway        the binary
+$KAMI_HOME (default: the current directory)
+├── kami-gateway        the binary
 ├── state/               (chmod 700)
 │   ├── config.json      API keys + model (chmod 600)
 │   ├── SOUL.md          the model's system prompt — it can edit this
@@ -41,10 +41,10 @@ through dedicated tools (`read_soul`/`write_soul`, `read_tools`/`write_tools`,
 Requires Go 1.21+. No modules to download.
 
 ```sh
-go build -o ralph-gateway .
+go build -o kami-gateway .
 ```
 
-(You're likely on Arch/Omarchy x86_64 — a prebuilt `ralph-gateway` linux/amd64
+(You're likely on Arch/Omarchy x86_64 — a prebuilt `kami-gateway` linux/amd64
 binary is included; rebuild if you prefer.)
 
 ## Setup
@@ -54,7 +54,7 @@ binary is included; rebuild if you prefer.)
 3. Run the wizard:
 
    ```sh
-   ./ralph-gateway setup
+   ./kami-gateway setup
    ```
 
    It asks for your Gemini key, model (default `gemini-2.0-flash`), and bot
@@ -64,7 +64,7 @@ binary is included; rebuild if you prefer.)
 ## Run
 
 ```sh
-./ralph-gateway
+./kami-gateway
 ```
 
 It long-polls Telegram (no inbound port, no public IP). Message your bot and it
@@ -98,20 +98,20 @@ save it."* — it'll call `read_soul` then `write_soul`.
 ## Run it as a service (optional)
 
 ```ini
-# ~/.config/systemd/user/ralph-gateway.service
+# ~/.config/systemd/user/kami-gateway.service
 [Unit]
-Description=ralph-gateway
+Description=kami-gateway
 [Service]
-WorkingDirectory=%h/ralph-gateway
-ExecStart=%h/ralph-gateway/ralph-gateway
+WorkingDirectory=%h/kami-gateway
+ExecStart=%h/kami-gateway/kami-gateway
 Restart=on-failure
-Environment=RALPH_HOME=%h/ralph-gateway
+Environment=KAMI_HOME=%h/kami-gateway
 [Install]
 WantedBy=default.target
 ```
 
 ```sh
-systemctl --user enable --now ralph-gateway
+systemctl --user enable --now kami-gateway
 ```
 
 ## Notes / known simplifications
@@ -132,5 +132,5 @@ systemctl --user enable --now ralph-gateway
 ## Build for other machines
 
 ```sh
-make dist   # → dist/ralph-gateway-{linux-amd64,linux-arm64,darwin-arm64}
+make dist   # → dist/kami-gateway-{linux-amd64,linux-arm64,darwin-arm64}
 ```

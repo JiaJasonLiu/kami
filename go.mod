@@ -1,3 +1,3 @@
-module ralph-gateway
+module kami-gateway
 
 go 1.21

@@ -1,7 +1,6 @@
-// ralph-gateway: a very small, privacy-first AI gateway you talk to over Telegram.
+// kami-gateway: a very small, privacy-first AI gateway you talk to over Telegram.
 //
-// Philosophy (the "Ralph" way): one bounded loop, no cleverness, zero external
-// dependencies. The model gets a SOUL.md (its system prompt, which it can edit),
+// The model gets a SOUL.md (its system prompt, which it can edit),
 // a sandboxed workspace it cannot escape, and a handful of tools defined in
 // tools.json (which it can also edit). Single user, single chat, Gemini only.
 package main
@@ -28,7 +27,7 @@ import (
 // Paths & layout
 // ---------------------------------------------------------------------------
 //
-//	$RALPH_HOME (default ".")
+//	$KAMI_HOME (default ".")
 //	├── state/
 //	│   ├── config.json    secrets + model (chmod 600)
 //	│   ├── SOUL.md         the model's system prompt (model can edit)
@@ -544,7 +543,7 @@ func clearHistory() {
 }
 
 // ---------------------------------------------------------------------------
-// The agent loop  (bounded — the Ralph way)
+// The agent loop  (bounded — the kami way)
 // ---------------------------------------------------------------------------
 
 const maxToolSteps = 8
@@ -709,7 +708,7 @@ func saveOffset(n int64) {
 }
 
 func runBot() {
-	log.Printf("ralph-gateway up. model=%s chat=%d", cfg.GeminiModel, cfg.TelegramChatID)
+	log.Printf("kami-gateway up. model=%s chat=%d", cfg.GeminiModel, cfg.TelegramChatID)
 	tgSend(cfg.TelegramChatID, "👋 Gateway online. Say something, or /new to reset.")
 
 	sig := make(chan os.Signal, 1)
@@ -755,7 +754,7 @@ func runBot() {
 
 func runSetup() error {
 	in := bufio.NewReader(os.Stdin)
-	fmt.Println("=== ralph-gateway setup ===")
+	fmt.Println("=== kami-gateway setup ===")
 	fmt.Println("(everything is stored locally under ./state — nothing leaves this machine except calls to Gemini and Telegram)")
 	fmt.Println()
 
@@ -907,7 +906,7 @@ func chunk(s string, size int) []string {
 
 func main() {
 	log.SetFlags(log.Ltime)
-	home = orDefault(os.Getenv("RALPH_HOME"), ".")
+	home = orDefault(os.Getenv("KAMI_HOME"), ".")
 
 	if err := ensureDirs(); err != nil {
 		log.Fatalf("could not create directories: %v", err)

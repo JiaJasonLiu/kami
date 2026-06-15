@@ -1,4 +1,4 @@
-BINARY := ralph-gateway
+BINARY := kami-gateway
 
 .PHONY: build run setup test fmt vet clean dist
 

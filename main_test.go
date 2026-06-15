@@ -10,7 +10,7 @@ import (
 )
 
 func TestSafePath(t *testing.T) {
-	home = "/tmp/ralphtest"
+	home = "/tmp/kamitest"
 	good := []string{"notes.txt", "a/b/c.md", "./x.txt"}
 	for _, g := range good {
 		if _, err := safePath(g); err != nil {
