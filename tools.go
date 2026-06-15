@@ -35,6 +35,9 @@ var handlers = map[string]toolHandler{
 	"set_config":  tSetConfig,
 }
 
+// loadTools reads and parses tools.json from the state directory.
+// Returning a value type (ToolsFile) rather than a pointer is fine here because the
+// struct is only used locally; Go copies are cheap for small structs.
 func loadTools() (ToolsFile, error) {
 	var tf ToolsFile
 	b, err := os.ReadFile(statePath(toolsFile))
@@ -45,6 +48,9 @@ func loadTools() (ToolsFile, error) {
 	return tf, err
 }
 
+// enabledDeclarations returns only the tool declarations that are both enabled in tools.json
+// AND have a corresponding handler registered in the handlers map.
+// This two-gate check prevents the model from calling tools the program doesn't implement.
 func enabledDeclarations() ([]gFunctionDecl, error) {
 	tf, err := loadTools()
 	if err != nil {
@@ -63,6 +69,9 @@ func enabledDeclarations() ([]gFunctionDecl, error) {
 	return out, nil
 }
 
+// execTool dispatches a tool call by name and always returns a plain string result.
+// Errors are converted to "error: ..." strings so the model receives them as tool output
+// rather than crashing the agent loop — a key resilience pattern for agentic systems.
 func execTool(name string, args map[string]interface{}) string {
 	h, ok := handlers[name]
 	if !ok {
@@ -75,6 +84,9 @@ func execTool(name string, args map[string]interface{}) string {
 	return res
 }
 
+// argStr extracts a required string argument from the generic args map.
+// JSON unmarshalling into map[string]interface{} gives string values as interface{},
+// so a type assertion v.(string) is needed — and we return an error if it fails.
 func argStr(args map[string]interface{}, key string) (string, error) {
 	v, ok := args[key]
 	if !ok {
@@ -87,6 +99,9 @@ func argStr(args map[string]interface{}, key string) (string, error) {
 	return s, nil
 }
 
+// tListFiles walks the workspace directory tree and returns a newline-separated list of
+// relative paths with sizes. The blank identifier _ discards the unused args parameter,
+// which is required by the toolHandler function type signature.
 func tListFiles(_ map[string]interface{}) (string, error) {
 	root := workspaceRoot()
 	var files []string
@@ -110,6 +125,8 @@ func tListFiles(_ map[string]interface{}) (string, error) {
 	return strings.Join(files, "\n"), nil
 }
 
+// tReadFile reads a workspace file by relative path, validating the path first via safePath
+// to prevent directory traversal attacks.
 func tReadFile(args map[string]interface{}) (string, error) {
 	rel, err := argStr(args, "path")
 	if err != nil {
@@ -126,6 +143,9 @@ func tReadFile(args map[string]interface{}) (string, error) {
 	return string(b), nil
 }
 
+// tWriteFile creates or overwrites a file in the workspace.
+// os.MkdirAll on filepath.Dir(abs) ensures any intermediate directories exist before writing,
+// so the model can create files in subdirectories without a separate mkdir step.
 func tWriteFile(args map[string]interface{}) (string, error) {
 	rel, err := argStr(args, "path")
 	if err != nil {
@@ -148,6 +168,7 @@ func tWriteFile(args map[string]interface{}) (string, error) {
 	return fmt.Sprintf("wrote %d bytes to %s", len(content), rel), nil
 }
 
+// tDeleteFile removes a single file from the workspace after a sandbox path check.
 func tDeleteFile(args map[string]interface{}) (string, error) {
 	rel, err := argStr(args, "path")
 	if err != nil {
@@ -163,6 +184,7 @@ func tDeleteFile(args map[string]interface{}) (string, error) {
 	return "deleted " + rel, nil
 }
 
+// tReadSoul returns the current contents of SOUL.md, the model's own system prompt.
 func tReadSoul(_ map[string]interface{}) (string, error) {
 	b, err := os.ReadFile(statePath(soulFile))
 	if err != nil {
@@ -171,6 +193,8 @@ func tReadSoul(_ map[string]interface{}) (string, error) {
 	return string(b), nil
 }
 
+// tWriteSoul replaces SOUL.md with new content, refusing to write an empty file
+// as a guard against accidentally wiping the system prompt.
 func tWriteSoul(args map[string]interface{}) (string, error) {
 	content, err := argStr(args, "content")
 	if err != nil {
@@ -185,6 +209,7 @@ func tWriteSoul(args map[string]interface{}) (string, error) {
 	return "SOUL.md updated; it takes effect on your next reply", nil
 }
 
+// tReadTools returns the raw JSON of tools.json so the model can inspect its own tool manifest.
 func tReadTools(_ map[string]interface{}) (string, error) {
 	b, err := os.ReadFile(statePath(toolsFile))
 	if err != nil {
@@ -193,6 +218,8 @@ func tReadTools(_ map[string]interface{}) (string, error) {
 	return string(b), nil
 }
 
+// tWriteTools validates and replaces tools.json. Parsing into a probe ToolsFile first ensures
+// the model can never write malformed JSON that would crash the next tool load.
 func tWriteTools(args map[string]interface{}) (string, error) {
 	content, err := argStr(args, "content")
 	if err != nil {
@@ -208,6 +235,8 @@ func tWriteTools(args map[string]interface{}) (string, error) {
 	return "tools.json updated; changes take effect on your next reply", nil
 }
 
+// tGetConfig returns a JSON snapshot of the current config, masking sensitive API keys
+// so the model can see which model is active without exposing credentials in conversation history.
 func tGetConfig(_ map[string]interface{}) (string, error) {
 	out := map[string]interface{}{
 		"gemini_model":            cfg.GeminiModel,
@@ -220,6 +249,9 @@ func tGetConfig(_ map[string]interface{}) (string, error) {
 	return string(b), nil
 }
 
+// tSetConfig allows the model to update a whitelisted subset of config keys at runtime.
+// The switch statement acts as an allowlist — any unlisted key is explicitly rejected,
+// which is safer than a generic key-value setter.
 func tSetConfig(args map[string]interface{}) (string, error) {
 	key, err := argStr(args, "key")
 	if err != nil {

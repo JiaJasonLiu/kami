@@ -6,8 +6,7 @@ can rewrite), a sandboxed `workspace/` it can't escape, and a few tools defined
 in `tools.json` (which it can also edit). No Docker, no database, no web UI,
 zero external Go dependencies.
 
-Built in the "Kami" spirit: one bounded agent loop, no cleverness. Improve it
-as you use it.
+Built in the "Kami" spirit: a presence that inhabits the tool, shaped by use. One bounded agent loop, no cleverness. Integrate it in your everyday tasks.
 
 ## Layout
 
@@ -41,12 +40,8 @@ through dedicated tools (`read_soul`/`write_soul`, `read_tools`/`write_tools`,
 Requires Go 1.21+. No modules to download.
 
 ```sh
-go build -o kami-gateway .
+make build
 ```
-
-(You're likely on Arch/Omarchy x86_64 — a prebuilt `kami-gateway` linux/amd64
-binary is included; rebuild if you prefer.)
-
 ## Setup
 
 1. Create a bot with [@BotFather](https://t.me/BotFather) and copy the token.

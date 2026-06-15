@@ -9,6 +9,10 @@ import (
 
 const maxToolSteps = 8
 
+// handleUserMessage is the core agent loop: it handles built-in slash commands first,
+// then runs the Gemini agentic loop that may call tools multiple times before producing
+// a final text reply. The loop is bounded by maxToolSteps to prevent infinite tool chains.
+// strings.Builder is used to accumulate text parts efficiently without repeated string concatenation.
 func handleUserMessage(text string) string {
 	switch strings.TrimSpace(text) {
 	case "/new":

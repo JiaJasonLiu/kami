@@ -77,6 +77,9 @@ const geminiMaxAttempts = 3
 
 var geminiBackoffBase = 2 * time.Second
 
+// callGemini sends a request to the Gemini API with simple exponential-ish backoff retry.
+// It retries only on transient errors (rate limits, 5xx) — permanent errors are returned immediately.
+// Returning a pointer (*gResponse) is idiomatic when the struct is large or may be nil on error.
 func callGemini(req gRequest) (*gResponse, error) {
 	var lastErr error
 	for attempt := 1; attempt <= geminiMaxAttempts; attempt++ {
@@ -95,6 +98,11 @@ func callGemini(req gRequest) (*gResponse, error) {
 	return nil, lastErr
 }
 
+// callGeminiOnce makes a single HTTP POST to the Gemini generateContent endpoint.
+// It returns three values: the parsed response, a boolean indicating whether the error
+// is retryable, and the error itself. Returning multiple values to encode different
+// failure modes is a common Go pattern instead of using exceptions or tagged unions.
+// defer resp.Body.Close() ensures the HTTP body is drained and closed even if we return early.
 func callGeminiOnce(req gRequest) (*gResponse, bool, error) {
 	endpoint := fmt.Sprintf(
 		"%s/models/%s:generateContent?key=%s",

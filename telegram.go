@@ -28,10 +28,16 @@ type tgUpdatesResp struct {
 	Result []tgUpdate `json:"result"`
 }
 
+// tgAPI constructs the full Telegram Bot API URL for a given method name,
+// embedding the bot token from config. The token acts as both identifier and auth credential.
 func tgAPI(method string) string {
 	return fmt.Sprintf("https://api.telegram.org/bot%s/%s", cfg.TelegramToken, method)
 }
 
+// tgGetUpdates fetches new messages via Telegram's long-polling getUpdates API.
+// The timeout parameter is the server-side long-poll duration in seconds; the HTTP client
+// timeout is set slightly longer to avoid the client cutting off a valid server response.
+// defer resp.Body.Close() is critical to release the connection back to the HTTP pool.
 func tgGetUpdates(offset int64, timeout int) ([]tgUpdate, error) {
 	u := fmt.Sprintf("%s?timeout=%d&offset=%d", tgAPI("getUpdates"), timeout, offset)
 	client := &http.Client{Timeout: time.Duration(timeout+15) * time.Second}
@@ -50,6 +56,9 @@ func tgGetUpdates(offset int64, timeout int) ([]tgUpdate, error) {
 	return r.Result, nil
 }
 
+// tgSend sends a text message to Telegram, splitting it into chunks if it exceeds
+// Telegram's 4096-character message limit. Errors are logged but not returned because
+// a failed send is not fatal — the bot loop continues regardless.
 func tgSend(chatID int64, text string) {
 	for _, chunk := range chunk(text, 4000) {
 		payload, _ := json.Marshal(map[string]interface{}{"chat_id": chatID, "text": chunk})
@@ -62,6 +71,8 @@ func tgSend(chatID int64, text string) {
 	}
 }
 
+// tgSendTyping sends a "typing..." indicator to the chat so the user knows the bot is working.
+// Errors are silently ignored — this is a best-effort UX enhancement, not a critical operation.
 func tgSendTyping(chatID int64) {
 	payload, _ := json.Marshal(map[string]interface{}{"chat_id": chatID, "action": "typing"})
 	resp, err := httpClient.Post(tgAPI("sendChatAction"), "application/json", bytes.NewReader(payload))
@@ -70,6 +81,8 @@ func tgSendTyping(chatID int64) {
 	}
 }
 
+// loadOffset reads the last-seen Telegram update ID from disk so the bot resumes
+// from where it left off after a restart, rather than reprocessing old messages.
 func loadOffset() int64 {
 	b, err := os.ReadFile(statePath(offsetFile))
 	if err != nil {
@@ -80,12 +93,43 @@ func loadOffset() int64 {
 	return n
 }
 
+// saveOffset persists the latest processed update ID to disk. Errors are swallowed
+// because a failed write just means we might re-process one message on next restart.
 func saveOffset(n int64) {
 	_ = os.WriteFile(statePath(offsetFile), []byte(fmt.Sprintf("%d", n)), 0o644)
 }
 
+// tgSetCommands registers the bot's slash commands with Telegram so they appear in the
+// command menu in the client UI. A local struct is defined inline here — Go allows
+// type declarations inside functions, which is useful for one-off JSON shapes.
+// TODO: this doesn't seem to work. Need to update
+func tgSetCommands() {
+	type tgCommand struct {
+		Command     string `json:"command"`
+		Description string `json:"description"`
+	}
+	payload, _ := json.Marshal(map[string]interface{}{
+		"commands": []tgCommand{
+			{"new", "Wipe conversation memory and start fresh"},
+			{"help", "List available commands"},
+		},
+	})
+	resp, err := httpClient.Post(tgAPI("setMyCommands"), "application/json", bytes.NewReader(payload))
+	if err != nil {
+		log.Printf("setMyCommands error: %v", err)
+		return
+	}
+	resp.Body.Close()
+}
+
+// runBot is the main event loop: it long-polls Telegram for messages and dispatches each one
+// to handleUserMessage. Signal handling is done in a goroutine (go func()) that blocks on
+// a channel receive (<-sig); when a SIGINT/SIGTERM arrives the goroutine sends a goodbye
+// message and exits. make(chan os.Signal, 1) uses a buffered channel so the OS signal
+// delivery never blocks even if the goroutine hasn't reached the receive yet.
 func runBot() {
 	log.Printf("kami-gateway up. model=%s chat=%d", cfg.GeminiModel, cfg.TelegramChatID)
+	tgSetCommands()
 	tgSend(cfg.TelegramChatID, "👋 Gateway online. Say something, or /new to reset.")
 
 	sig := make(chan os.Signal, 1)
