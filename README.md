@@ -15,11 +15,16 @@ $KAMI_HOME (default: the current directory)
 ├── kami-gateway        the binary
 ├── state/               (chmod 700)
 │   ├── config.json      API keys + model (chmod 600)
-│   ├── SOUL.md          the model's system prompt — it can edit this
-│   ├── tools.json       tool registry — it can edit this
-│   ├── history.json     conversation memory (cleared by /new)
-│   └── offset.txt       Telegram polling cursor
-└── workspace/           the ONLY place file tools may read/write
+│   ├── offset.txt       Telegram polling cursor
+│   ├── agent.txt        name of the active agent profile
+│   ├── SOUL.md          the DEFAULT agent's system prompt — it can edit this
+│   ├── tools.json       the default agent's tool registry — it can edit this
+│   └── history.json     the default agent's memory (cleared by /new)
+├── workspace/           the default agent's sandbox — its ONLY writable area
+└── agents/              extra agent profiles (created with /agent new)
+    └── <name>/
+        ├── state/       that agent's own SOUL.md, tools.json, history.json
+        └── workspace/   that agent's own sandbox
 ```
 
 ## The sandbox ("Docker without Docker")
@@ -68,8 +73,30 @@ replies. Only your configured chat id is answered; everyone else is ignored.
 ## Chat commands
 
 - `/new` — wipe conversation memory and start fresh
+- `/agents` — list agent profiles (the active one is marked)
+- `/agent new <name> [personality…]` — create a new agent and switch to it
+- `/agent use <name>` (or just `/agent <name>`) — switch agents
+- `/agent delete <name>` — delete an agent and all of its files
 - `/help` — list commands
 - anything else — sent to the model
+
+## Agent profiles
+
+Every agent is a self-contained personality: its **own SOUL.md**, its own
+`tools.json`, its own conversation memory, and its own sandboxed workspace.
+Create one in chat and it's live immediately:
+
+```
+/agent new coder You are a terse coding assistant. Prefer diffs over prose.
+```
+
+The optional personality text is written into the newborn agent's SOUL.md, so
+it wakes up already in character. Switch back and forth with `/agent use` —
+each agent keeps its own memory and files, and can never see another agent's
+workspace. Agent names are restricted to `[a-z0-9_-]` (max 32 chars) so a
+name can never smuggle a path. The default agent is called `kami` and lives
+in the original top-level `state/` + `workspace/`, so existing installs keep
+working unchanged.
 
 ## What the model can do out of the box
 
@@ -80,6 +107,10 @@ replies. Only your configured chat id is answered; everyone else is ignored.
 - `get_config` / `set_config` — read config, change `gemini_model` or
   `gemini_api_key` (Telegram settings are deliberately not self-editable so it
   can't lock itself out)
+- `relay_to_code` — send a prompt to a local code service (e.g. a Claude Code
+  wrapper) listening on `http://127.0.0.1:8080/execute` and get the terminal
+  output back. The agent itself never runs commands (`os/exec` is not used
+  anywhere); execution happens on the other side of the loopback boundary.
 
 Try: *"Read your SOUL and give yourself a name and a dry sense of humour, then
 save it."* — it'll call `read_soul` then `write_soul`.
@@ -90,7 +121,23 @@ save it."* — it'll call `read_soul` then `write_soul`.
 2. Register it in the `handlers` map.
 3. Add a declaration to `state/tools.json` (or let the model do that part).
 
-## Run it as a service (optional)
+## Run it as a hardened system service (recommended)
+
+`setup.sh` installs the binary as a locked-down systemd service: it creates a
+no-login `tg-agent` system user, installs to `/opt/tg-agent` (binary
+`chmod 700`), and writes a unit with `ProtectSystem=strict`, `ProtectHome=yes`,
+`ReadWritePaths=/opt/tg-agent/storage`, `PrivateTmp=yes` and an empty
+`CapabilityBoundingSet=` — so the kernel itself guarantees the agent can only
+write inside its own storage directory.
+
+```sh
+make build
+sudo ./setup.sh                 # installs + enables tg-agent.service
+sudo -u tg-agent KAMI_HOME=/opt/tg-agent/storage /opt/tg-agent/kami-gateway setup
+sudo systemctl start tg-agent.service
+```
+
+## Run it as a user service (lighter alternative)
 
 ```ini
 # ~/.config/systemd/user/kami-gateway.service

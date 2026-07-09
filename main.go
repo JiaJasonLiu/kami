@@ -6,7 +6,6 @@
 package main
 
 import (
-	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -14,12 +13,14 @@ import (
 
 var home string
 
-// statePath returns the absolute path for a named file inside the state directory.
-// Keeping all mutable state under a single "state/" prefix makes the app easy to back up or wipe.
+// statePath returns the absolute path for a named GATEWAY-LEVEL file (config.json,
+// offset.txt, agent.txt) inside the top-level state directory. Per-agent files
+// (SOUL.md, tools.json, history.json) resolve through agentStatePath in profiles.go.
 func statePath(name string) string { return filepath.Join(home, "state", name) }
 
-// workspaceRoot returns the path to the sandboxed folder the AI model can read/write.
-func workspaceRoot() string { return filepath.Join(home, "workspace") }
+// workspaceRoot returns the path to the sandboxed folder the ACTIVE agent can
+// read/write. Each agent profile has its own workspace (see profiles.go).
+func workspaceRoot() string { return agentWorkspaceDir(activeAgent) }
 
 const (
 	configFile  = "config.json"
@@ -38,24 +39,14 @@ func ensureDirs() error {
 	return os.MkdirAll(workspaceRoot(), 0o755)
 }
 
-// ensureScaffold seeds the state directory with default SOUL.md and tools.json on first run.
-// errors.Is(err, os.ErrNotExist) is the idiomatic Go way to check whether a file is simply missing
-// rather than failing for some other reason (permissions, I/O error, etc.).
+// ensureScaffold seeds the active agent's profile with default SOUL.md and tools.json
+// on first run. scaffoldAgent (profiles.go) is idempotent — it only writes files that
+// are missing, so an existing personality is never overwritten.
 func ensureScaffold() error {
 	if err := ensureDirs(); err != nil {
 		return err
 	}
-	if _, err := os.Stat(statePath(soulFile)); errors.Is(err, os.ErrNotExist) {
-		if err := os.WriteFile(statePath(soulFile), []byte(defaultSoul), 0o644); err != nil {
-			return err
-		}
-	}
-	if _, err := os.Stat(statePath(toolsFile)); errors.Is(err, os.ErrNotExist) {
-		if err := os.WriteFile(statePath(toolsFile), []byte(defaultTools), 0o644); err != nil {
-			return err
-		}
-	}
-	return nil
+	return scaffoldAgent(activeAgent)
 }
 
 // main is the program entry point. It handles first-run setup, validates config,
@@ -68,6 +59,7 @@ func main() {
 	if err := ensureDirs(); err != nil {
 		log.Fatalf("could not create directories: %v", err)
 	}
+	loadActiveAgent()
 
 	forceSetup := len(os.Args) > 1 && (os.Args[1] == "setup" || os.Args[1] == "--setup")
 	exists, err := loadConfig()

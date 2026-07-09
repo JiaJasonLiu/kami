@@ -9,18 +9,24 @@ import (
 	"time"
 )
 
-func TestSafePath(t *testing.T) {
-	home = "/tmp/kamitest"
+// TestFileToolsRejectTraversal exercises the sandbox end-to-end through the tool
+// handlers. The path checks themselves live in internal/workspace (see its tests);
+// this confirms the tools are actually wired through that enforcement point.
+func TestFileToolsRejectTraversal(t *testing.T) {
+	home = t.TempDir()
 	good := []string{"notes.txt", "a/b/c.md", "./x.txt"}
 	for _, g := range good {
-		if _, err := safePath(g); err != nil {
+		if _, err := tWriteFile(map[string]interface{}{"path": g, "content": "ok"}); err != nil {
 			t.Errorf("expected %q allowed, got %v", g, err)
 		}
 	}
-	bad := []string{"../escape.txt", "../../etc/passwd", "/etc/passwd", "a/../../b", ""}
+	bad := []string{"../escape.txt", "../../etc/passwd", "a/../../b", ""}
 	for _, b := range bad {
-		if _, err := safePath(b); err == nil {
-			t.Errorf("expected %q rejected, but it was allowed", b)
+		if _, err := tWriteFile(map[string]interface{}{"path": b, "content": "x"}); err == nil {
+			t.Errorf("expected write to %q rejected, but it was allowed", b)
+		}
+		if _, err := tReadFile(map[string]interface{}{"path": b}); err == nil {
+			t.Errorf("expected read of %q rejected, but it was allowed", b)
 		}
 	}
 }
@@ -48,8 +54,8 @@ func TestScaffoldAndCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(decls) != 10 {
-		t.Errorf("expected 10 enabled tools, got %d", len(decls))
+	if len(decls) != 11 {
+		t.Errorf("expected 11 enabled tools, got %d", len(decls))
 	}
 	// offline commands shouldn't touch the network
 	if got := handleUserMessage("/help"); got == "" {

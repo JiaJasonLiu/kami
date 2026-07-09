@@ -14,17 +14,21 @@ const maxToolSteps = 8
 // a final text reply. The loop is bounded by maxToolSteps to prevent infinite tool chains.
 // strings.Builder is used to accumulate text parts efficiently without repeated string concatenation.
 func handleUserMessage(text string) string {
-	switch strings.TrimSpace(text) {
+	trimmed := strings.TrimSpace(text)
+	switch trimmed {
 	case "/new":
 		clearHistory()
 		return "🧹 Started a fresh conversation."
 	case "/help":
-		return "Commands:\n/new — wipe conversation memory\n/help — this message\nAnything else is sent to the model."
+		return "Commands:\n/new — wipe conversation memory\n/agents — list agent profiles\n/agent new <name> [personality…] — create an agent with its own soul and workspace\n/agent use <name> — switch agents\n/agent delete <name> — delete an agent\n/help — this message\nAnything else is sent to the model."
 	case "/start":
 		return "Hi. I'm your gateway. Talk to me normally, or /new to start over."
 	}
+	if trimmed == "/agents" || trimmed == "/agent" || strings.HasPrefix(trimmed, "/agent ") {
+		return handleAgentCommand(trimmed)
+	}
 
-	soul, err := os.ReadFile(statePath(soulFile))
+	soul, err := os.ReadFile(agentStatePath(soulFile))
 	if err != nil {
 		return "⚠️ couldn't read SOUL.md: " + err.Error()
 	}

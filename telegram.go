@@ -111,6 +111,8 @@ func tgSetCommands() {
 	payload, _ := json.Marshal(map[string]interface{}{
 		"commands": []tgCommand{
 			{"new", "Wipe conversation memory and start fresh"},
+			{"agents", "List agent profiles"},
+			{"agent", "Create/switch/delete agent profiles"},
 			{"help", "List available commands"},
 		},
 	})
@@ -128,7 +130,7 @@ func tgSetCommands() {
 // message and exits. make(chan os.Signal, 1) uses a buffered channel so the OS signal
 // delivery never blocks even if the goroutine hasn't reached the receive yet.
 func runBot() {
-	log.Printf("kami-gateway up. model=%s chat=%d", cfg.GeminiModel, cfg.TelegramChatID)
+	log.Printf("kami-gateway up. model=%s chat=%d agent=%s", cfg.GeminiModel, cfg.TelegramChatID, activeAgent)
 	tgSetCommands()
 	tgSend(cfg.TelegramChatID, "👋 Gateway online. Say something, or /new to reset.")
 
