@@ -8,6 +8,9 @@ zero external Go dependencies.
 
 Built in the "Kami" spirit: a presence that inhabits the tool, shaped by use. One bounded agent loop, no cleverness. Integrate it in your everyday tasks.
 
+> **In a hurry?** See [`QUICKSTART.md`](QUICKSTART.md) — or just run
+> `./quickstart.sh` to build, configure, and start the gateway.
+
 ## Layout
 
 ```
