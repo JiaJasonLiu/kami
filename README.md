@@ -8,6 +8,9 @@ zero external Go dependencies.
 
 Built in the "Kami" spirit: a presence that inhabits the tool, shaped by use. One bounded agent loop, no cleverness. Integrate it in your everyday tasks.
 
+> **In a hurry?** See [`QUICKSTART.md`](QUICKSTART.md) — or just run
+> `./quickstart.sh` to build, configure, and start the gateway.
+
 ## Layout
 
 ```
@@ -16,7 +19,8 @@ $KAMI_HOME (default: the current directory)
 ├── state/               (chmod 700)
 │   ├── config.json      API keys + model (chmod 600)
 │   ├── offset.txt       Telegram polling cursor
-│   ├── agent.txt        name of the active agent profile
+│   ├── agent.txt        name of the DM/General default agent profile
+│   ├── topics.json      forum thread → agent bindings
 │   ├── SOUL.md          the DEFAULT agent's system prompt — it can edit this
 │   ├── tools.json       the default agent's tool registry — it can edit this
 │   └── history.json     the default agent's memory (cleared by /new)
@@ -74,8 +78,8 @@ replies. Only your configured chat id is answered; everyone else is ignored.
 
 - `/new` — wipe conversation memory and start fresh
 - `/agents` — list agent profiles (the active one is marked)
-- `/agent new <name> [personality…]` — create a new agent and switch to it
-- `/agent use <name>` (or just `/agent <name>`) — switch agents
+- `/agent new <name> [personality…]` — create a new agent and use it here
+- `/agent use <name>` (or just `/agent <name>`) — assign an agent to this chat/topic
 - `/agent delete <name>` — delete an agent and all of its files
 - `/help` — list commands
 - anything else — sent to the model
@@ -97,6 +101,32 @@ workspace. Agent names are restricted to `[a-z0-9_-]` (max 32 chars) so a
 name can never smuggle a path. The default agent is called `kami` and lives
 in the original top-level `state/` + `workspace/`, so existing installs keep
 working unchanged.
+
+## Forum topics: one agent per topic
+
+Talk to the bot inside a **Telegram forum group** (a supergroup with *Topics*
+turned on) and each topic becomes its own persistent conversation with its own
+agent — like Slack channels, but one bot:
+
+1. In BotFather, disable the bot's **privacy mode** (`/setprivacy` → Disable)
+   so it can see every message in the group, then add it to the group.
+2. Enable **Topics** in the group settings and set the group's chat id as your
+   `telegram_chat_id`.
+3. Create a topic called "Coding" and the gateway spins up a matching agent
+   (slugified to `coding`), binds the topic to it, and greets it. Everything
+   you say in that topic goes to that agent; replies come back in the topic.
+
+Bindings live in `state/topics.json` and survive restarts. Inside a topic,
+`/agent use <name>` re-points *that topic* (not your DMs) at another agent,
+and `/agent new` creates-and-binds in one step. The group's **General** topic
+and ordinary **direct messages** (thread 0) always use the gateway-wide
+default agent from `agent.txt`, so nothing about single-chat use changes.
+
+> Telegram note: bots never receive each other's messages, so agents can't
+> "talk to each other" in a topic on their own — every message is routed by
+> the gateway. This is the single-bot design; if you'd rather each agent be a
+> separate contact with its own name/avatar, run one bot token per agent
+> instead (not what this build does).
 
 ## What the model can do out of the box
 

@@ -59,7 +59,9 @@ func runSetup() error {
 	if cfg.TelegramChatID == 0 {
 		fmt.Println()
 		fmt.Println("Now I need to learn which chat you'll talk to me from.")
-		fmt.Println("Open Telegram, find your bot, and send it any message.")
+		fmt.Println("• Direct messages: open your bot in Telegram and send it any message.")
+		fmt.Println("• Forum group (one agent per topic): add the bot to the group and")
+		fmt.Println("  disable its privacy mode in @BotFather, then send a message in the group.")
 		fmt.Print("Then press Enter here to detect it (or type a chat id manually): ")
 		line, _ := in.ReadString('\n')
 		line = strings.TrimSpace(line)

@@ -20,7 +20,7 @@ func handleUserMessage(text string) string {
 		clearHistory()
 		return "🧹 Started a fresh conversation."
 	case "/help":
-		return "Commands:\n/new — wipe conversation memory\n/agents — list agent profiles\n/agent new <name> [personality…] — create an agent with its own soul and workspace\n/agent use <name> — switch agents\n/agent delete <name> — delete an agent\n/help — this message\nAnything else is sent to the model."
+		return "Commands:\n/new — wipe this conversation's memory\n/agents — list agent profiles\n/agent new <name> [personality…] — create an agent with its own soul and workspace\n/agent use <name> — assign an agent to this chat/topic\n/agent delete <name> — delete an agent\n/help — this message\nAnything else is sent to the model.\n\nTip: in a Telegram forum group, each topic gets its own agent automatically — create a topic and it spins up a matching agent."
 	case "/start":
 		return "Hi. I'm your gateway. Talk to me normally, or /new to start over."
 	}
