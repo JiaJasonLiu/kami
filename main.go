@@ -80,8 +80,8 @@ func main() {
 	if err := ensureScaffold(); err != nil {
 		log.Fatalf("could not create scaffold: %v", err)
 	}
-	if cfg.GeminiAPIKey == "" || cfg.TelegramToken == "" || cfg.TelegramChatID == 0 {
-		log.Fatalf("config incomplete; run: %s setup", os.Args[0])
+	if err := configComplete(); err != nil {
+		log.Fatalf("config incomplete: %v; run: %s setup", err, os.Args[0])
 	}
 
 	runBot()

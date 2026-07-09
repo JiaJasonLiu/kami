@@ -3,11 +3,21 @@
 Get kami-gateway talking to you on Telegram in a few minutes. Everything runs
 on one machine — no Docker, no database.
 
-## 1. Get your two keys
+## 1. Get your keys
 
 - **Telegram bot token** — open [@BotFather](https://t.me/BotFather), send
   `/newbot`, follow the prompts, copy the token it gives you.
-- **Gemini API key** — from [Google AI Studio](https://aistudio.google.com/apikey).
+- **An AI provider key** — the wizard asks which provider you want and only
+  prompts for that one:
+  - **Gemini** (default) — [Google AI Studio](https://aistudio.google.com/apikey)
+  - **OpenAI** — an `sk-…` key from platform.openai.com
+  - **Anthropic** — a Claude API key from console.anthropic.com
+  - **OpenRouter** — a key from openrouter.ai
+  - **Local** — no key needed; run [Ollama](https://ollama.com) (or LM Studio,
+    llama.cpp, vLLM) and note its base URL + model name
+
+You can add more providers later and switch with `set_config provider <name>`
+right from the chat.
 
 ## 2. Choose how you'll talk to it
 
