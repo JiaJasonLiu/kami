@@ -11,10 +11,48 @@ import (
 )
 
 type Config struct {
-	GeminiAPIKey   string `json:"gemini_api_key"`
-	GeminiModel    string `json:"gemini_model"`
+	// Provider selects the active AI backend: gemini (default), openai,
+	// anthropic, openrouter, or local. Each backend keeps its own key/model
+	// below so switching never discards credentials.
+	Provider string `json:"provider,omitempty"`
+
+	// Gemini (Google AI Studio).
+	GeminiAPIKey string `json:"gemini_api_key"`
+	GeminiModel  string `json:"gemini_model"`
+
+	// OpenAI. Base URL is overridable for OpenAI-compatible gateways.
+	OpenAIAPIKey  string `json:"openai_api_key,omitempty"`
+	OpenAIModel   string `json:"openai_model,omitempty"`
+	OpenAIBaseURL string `json:"openai_base_url,omitempty"`
+
+	// Anthropic (Claude Messages API).
+	AnthropicAPIKey  string `json:"anthropic_api_key,omitempty"`
+	AnthropicModel   string `json:"anthropic_model,omitempty"`
+	AnthropicBaseURL string `json:"anthropic_base_url,omitempty"`
+
+	// OpenRouter (OpenAI-compatible aggregator).
+	OpenRouterAPIKey string `json:"openrouter_api_key,omitempty"`
+	OpenRouterModel  string `json:"openrouter_model,omitempty"`
+
+	// Local OpenAI-compatible server (Ollama, LM Studio, llama.cpp, vLLM…).
+	LocalBaseURL string `json:"local_base_url,omitempty"`
+	LocalModel   string `json:"local_model,omitempty"`
+	LocalAPIKey  string `json:"local_api_key,omitempty"`
+
 	TelegramToken  string `json:"telegram_token"`
 	TelegramChatID int64  `json:"telegram_chat_id"`
+}
+
+// configComplete reports whether the gateway has enough config to run: a
+// Telegram token + chat id, and a fully specified active provider.
+func configComplete() error {
+	if cfg.TelegramToken == "" || cfg.TelegramChatID == 0 {
+		return errors.New("telegram token or chat id is missing")
+	}
+	if _, err := activeModel(); err != nil {
+		return err
+	}
+	return nil
 }
 
 var cfg Config
@@ -52,8 +90,32 @@ func runSetup() error {
 	fmt.Println("(everything is stored locally under ./state — nothing leaves this machine except calls to Gemini and Telegram)")
 	fmt.Println()
 
-	cfg.GeminiAPIKey = strings.TrimSpace(prompt(in, "Gemini API key", cfg.GeminiAPIKey))
-	cfg.GeminiModel = strings.TrimSpace(prompt(in, "Gemini model", orDefault(cfg.GeminiModel, "gemini-2.0-flash")))
+	cfg.Provider = strings.ToLower(strings.TrimSpace(prompt(in, "AI provider (gemini/openai/anthropic/openrouter/local)", orDefault(cfg.Provider, "gemini"))))
+	switch cfg.Provider {
+	case "", "gemini":
+		cfg.Provider = "gemini"
+		cfg.GeminiAPIKey = strings.TrimSpace(prompt(in, "Gemini API key", cfg.GeminiAPIKey))
+		cfg.GeminiModel = strings.TrimSpace(prompt(in, "Gemini model", orDefault(cfg.GeminiModel, "gemini-2.0-flash")))
+	case "openai":
+		cfg.OpenAIAPIKey = strings.TrimSpace(prompt(in, "OpenAI API key", cfg.OpenAIAPIKey))
+		cfg.OpenAIModel = strings.TrimSpace(prompt(in, "OpenAI model", orDefault(cfg.OpenAIModel, "gpt-4o-mini")))
+		cfg.OpenAIBaseURL = strings.TrimSpace(prompt(in, "OpenAI base URL (blank for api.openai.com)", cfg.OpenAIBaseURL))
+	case "anthropic":
+		cfg.AnthropicAPIKey = strings.TrimSpace(prompt(in, "Anthropic API key", cfg.AnthropicAPIKey))
+		cfg.AnthropicModel = strings.TrimSpace(prompt(in, "Anthropic model", orDefault(cfg.AnthropicModel, "claude-3-5-sonnet-latest")))
+	case "openrouter":
+		cfg.OpenRouterAPIKey = strings.TrimSpace(prompt(in, "OpenRouter API key", cfg.OpenRouterAPIKey))
+		cfg.OpenRouterModel = strings.TrimSpace(prompt(in, "OpenRouter model", orDefault(cfg.OpenRouterModel, "openai/gpt-4o-mini")))
+	case "local":
+		cfg.LocalBaseURL = strings.TrimSpace(prompt(in, "Local server base URL", orDefault(cfg.LocalBaseURL, "http://localhost:11434/v1")))
+		cfg.LocalModel = strings.TrimSpace(prompt(in, "Local model name", orDefault(cfg.LocalModel, "llama3.1")))
+		cfg.LocalAPIKey = strings.TrimSpace(prompt(in, "Local API key (blank if none)", cfg.LocalAPIKey))
+	default:
+		fmt.Printf("Unknown provider %q — falling back to gemini.\n", cfg.Provider)
+		cfg.Provider = "gemini"
+		cfg.GeminiAPIKey = strings.TrimSpace(prompt(in, "Gemini API key", cfg.GeminiAPIKey))
+		cfg.GeminiModel = strings.TrimSpace(prompt(in, "Gemini model", orDefault(cfg.GeminiModel, "gemini-2.0-flash")))
+	}
 	cfg.TelegramToken = strings.TrimSpace(prompt(in, "Telegram bot token (from @BotFather)", cfg.TelegramToken))
 
 	if cfg.TelegramChatID == 0 {

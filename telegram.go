@@ -174,7 +174,12 @@ func tgSetCommands() {
 // message and exits. make(chan os.Signal, 1) uses a buffered channel so the OS signal
 // delivery never blocks even if the goroutine hasn't reached the receive yet.
 func runBot() {
-	log.Printf("kami-gateway up. model=%s chat=%d agent=%s", cfg.GeminiModel, cfg.TelegramChatID, activeAgent)
+	provider := orDefault(cfg.Provider, "gemini")
+	model := "?"
+	if mc, err := activeModel(); err == nil {
+		model = mc.model
+	}
+	log.Printf("kami-gateway up. provider=%s model=%s chat=%d agent=%s", provider, model, cfg.TelegramChatID, activeAgent)
 	tgSetCommands()
 	tgSend(cfg.TelegramChatID, "👋 Gateway online. Say something, or /new to reset.")
 

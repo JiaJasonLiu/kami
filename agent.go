@@ -48,7 +48,7 @@ func handleUserMessage(text string) string {
 	sys := &gSystemInstruction{Parts: []gPart{{Text: string(soul)}}}
 
 	for step := 0; step < maxToolSteps; step++ {
-		resp, err := callGemini(gRequest{SystemInstruction: sys, Contents: history, Tools: tools})
+		resp, err := callModel(gRequest{SystemInstruction: sys, Contents: history, Tools: tools})
 		if err != nil {
 			return "⚠️ " + err.Error()
 		}

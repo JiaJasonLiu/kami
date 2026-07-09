@@ -54,19 +54,28 @@ type gRequest struct {
 	Tools             []gToolDecl         `json:"tools,omitempty"`
 }
 
+type gCandidate struct {
+	Content      gContent `json:"content"`
+	FinishReason string   `json:"finishReason"`
+}
+
+type gPromptFeedback struct {
+	BlockReason string `json:"blockReason"`
+}
+
+type gAPIError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Status  string `json:"status"`
+}
+
+// gResponse is the internal, provider-neutral response shape. It happens to
+// mirror the Gemini API (the first backend), and every other provider client
+// translates its own response into this so the agent loop stays unchanged.
 type gResponse struct {
-	Candidates []struct {
-		Content      gContent `json:"content"`
-		FinishReason string   `json:"finishReason"`
-	} `json:"candidates"`
-	PromptFeedback *struct {
-		BlockReason string `json:"blockReason"`
-	} `json:"promptFeedback"`
-	Error *struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-		Status  string `json:"status"`
-	} `json:"error"`
+	Candidates     []gCandidate     `json:"candidates"`
+	PromptFeedback *gPromptFeedback `json:"promptFeedback"`
+	Error          *gAPIError       `json:"error"`
 }
 
 var httpClient = &http.Client{Timeout: 120 * time.Second}

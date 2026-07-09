@@ -1,10 +1,11 @@
 # kami-gateway
 
 A tiny, privacy-first AI gateway you talk to **only over Telegram**. One user,
-one chat, Gemini only. The model gets a `SOUL.md` (its system prompt, which it
-can rewrite), a sandboxed `workspace/` it can't escape, and a few tools defined
-in `tools.json` (which it can also edit). No Docker, no database, no web UI,
-zero external Go dependencies.
+one chat, your choice of AI provider (Gemini, OpenAI, Anthropic, OpenRouter,
+or a local OpenAI-compatible model). The model gets a `SOUL.md` (its system
+prompt, which it can rewrite), a sandboxed `workspace/` it can't escape, and a
+few tools defined in `tools.json` (which it can also edit). No Docker, no
+database, no web UI, zero external Go dependencies.
 
 Built in the "Kami" spirit: a presence that inhabits the tool, shaped by use. One bounded agent loop, no cleverness. Integrate it in your everyday tasks.
 
@@ -128,15 +129,46 @@ default agent from `agent.txt`, so nothing about single-chat use changes.
 > separate contact with its own name/avatar, run one bot token per agent
 > instead (not what this build does).
 
+## AI providers
+
+Pick a backend at setup time, or switch anytime by chatting `set_config`.
+Supported providers:
+
+| Provider     | `provider` value | Needs |
+|--------------|------------------|-------|
+| Google Gemini | `gemini` (default) | `gemini_api_key`, `gemini_model` |
+| OpenAI        | `openai`         | `openai_api_key`, `openai_model` (opt. `openai_base_url`) |
+| Anthropic     | `anthropic`      | `anthropic_api_key`, `anthropic_model` |
+| OpenRouter    | `openrouter`     | `openrouter_api_key`, `openrouter_model` |
+| Local         | `local`          | `local_model`, `local_base_url` (default Ollama `http://localhost:11434/v1`) |
+
+`openai`, `openrouter`, and `local` all speak the OpenAI Chat Completions
+format, so the **local** option works with Ollama, LM Studio, llama.cpp's
+server, vLLM — anything OpenAI-compatible — just point `local_base_url` at it.
+Tool calling is translated for every provider, so the file/soul/config tools
+work the same no matter which model is answering.
+
+Selection is **global** (one active provider for the gateway) and each
+provider keeps its own key/model, so you can pre-configure several and flip
+between them:
+
+```
+Ask the bot:  "set_config provider anthropic"
+              "get_config"          (shows the active provider + models)
+```
+
+You can also set any key at runtime, e.g. *"use set_config to set
+openai_api_key to sk-…"* — keys are stored `0600` and shown masked.
+
 ## What the model can do out of the box
 
 - `list_files`, `read_file`, `write_file`, `delete_file` — workspace only
 - `read_soul` / `write_soul` — view and rewrite its own personality
 - `read_tools` / `write_tools` — toggle/redescribe its tools (it can't invent
   new implementations — only tools the Go program already provides will run)
-- `get_config` / `set_config` — read config, change `gemini_model` or
-  `gemini_api_key` (Telegram settings are deliberately not self-editable so it
-  can't lock itself out)
+- `get_config` / `set_config` — read config and switch provider / change any
+  provider's model or API key (Telegram settings are deliberately not
+  self-editable so it can't lock itself out)
 - `relay_to_code` — send a prompt to a local code service (e.g. a Claude Code
   wrapper) listening on `http://127.0.0.1:8080/execute` and get the terminal
   output back. The agent itself never runs commands (`os/exec` is not used

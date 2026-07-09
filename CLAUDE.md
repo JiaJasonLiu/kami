@@ -5,9 +5,11 @@ Guidance for Claude Code when working in this repository.
 ## What this project is
 
 `kami-gateway` is a tiny, privacy-first AI agent you talk to over Telegram
-(one user, one chat, Gemini only). It is run as a **simple OpenClaw-style
-setup**: a single self-hosted personal-assistant gateway on one machine —
-no Docker, no database, no web UI, zero external Go dependencies.
+(one user, one chat). It supports multiple AI providers (Gemini, OpenAI,
+Anthropic, OpenRouter, and any OpenAI-compatible local server), selected
+globally via config. It is run as a **simple OpenClaw-style setup**: a single
+self-hosted personal-assistant gateway on one machine — no Docker, no
+database, no web UI, zero external Go dependencies.
 
 ## Deployment intent (for future reference)
 
@@ -46,6 +48,9 @@ topics.go                  forum topic → agent bindings (state/topics.json),
                            per-message routing, topic-name slugify
 tools.go                   tool registry + handlers (the model's only abilities)
 config.go                  config load/save + interactive setup wizard
+providers.go               multi-provider layer: callModel dispatcher +
+                           OpenAI-compatible & Anthropic clients (translate
+                           to/from the internal Gemini-shaped request)
 telegram.go / gemini.go    thin API clients (long-poll Telegram, call Gemini)
 history.go                 bounded conversation memory
 util.go                    small helpers (mask, truncate, chunk)
@@ -75,6 +80,23 @@ its Telegram forum topic before `handleUserMessage`); `dmAgent` (persisted in
 agent, an unbound thread falls back to `kami`. Binding a topic sets
 `activeAgent` for that turn but must never touch `dmAgent` — that separation
 is what stops a topic switch from leaking into DMs.
+
+## AI providers
+
+The agent loop is provider-neutral: it always builds the internal
+`gRequest`/`gResponse` types (which mirror Gemini, the original backend) and
+calls `callModel` in `providers.go`. `callModel` resolves `cfg.Provider` via
+`activeModel()` and dispatches to one of three clients — `callGemini`
+(gemini), the OpenAI-compatible client (openai, openrouter, local — they
+differ only by base URL/key), or the Anthropic client. Each client translates
+the internal shape to/from its own wire format, **including tool calls**:
+OpenAI and Anthropic link a call to its result by id, so translation mints
+synthetic ids while walking the history and matches results to calls by name
+(`toolRef`/`popByName`). When adding a provider, add a case to `activeModel`
+and, if it isn't OpenAI- or Anthropic-shaped, a new client + translation pair;
+never make the agent loop aware of provider specifics. Provider is global and
+switchable at runtime through `set_config`; each provider keeps its own
+key/model in config so switching never drops credentials.
 
 ## Commands
 

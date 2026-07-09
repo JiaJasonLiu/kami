@@ -258,11 +258,33 @@ func tRelayToCode(args map[string]interface{}) (string, error) {
 // so the model can see which model is active without exposing credentials in conversation history.
 func tGetConfig(_ map[string]interface{}) (string, error) {
 	out := map[string]interface{}{
-		"gemini_model":            cfg.GeminiModel,
-		"gemini_api_key":          mask(cfg.GeminiAPIKey),
-		"telegram_token":          mask(cfg.TelegramToken),
-		"telegram_chat_id":        cfg.TelegramChatID,
-		"editable_via_set_config": []string{"gemini_model", "gemini_api_key"},
+		"provider":           orDefault(cfg.Provider, "gemini"),
+		"gemini_model":       cfg.GeminiModel,
+		"gemini_api_key":     mask(cfg.GeminiAPIKey),
+		"openai_model":       cfg.OpenAIModel,
+		"openai_api_key":     mask(cfg.OpenAIAPIKey),
+		"openai_base_url":    cfg.OpenAIBaseURL,
+		"anthropic_model":    cfg.AnthropicModel,
+		"anthropic_api_key":  mask(cfg.AnthropicAPIKey),
+		"openrouter_model":   cfg.OpenRouterModel,
+		"openrouter_api_key": mask(cfg.OpenRouterAPIKey),
+		"local_model":        cfg.LocalModel,
+		"local_base_url":     cfg.LocalBaseURL,
+		"telegram_token":     mask(cfg.TelegramToken),
+		"telegram_chat_id":   cfg.TelegramChatID,
+		"editable_via_set_config": []string{
+			"provider",
+			"gemini_model", "gemini_api_key",
+			"openai_model", "openai_api_key", "openai_base_url",
+			"anthropic_model", "anthropic_api_key",
+			"openrouter_model", "openrouter_api_key",
+			"local_model", "local_base_url", "local_api_key",
+		},
+	}
+	if mc, err := activeModel(); err == nil {
+		out["active_model"] = mc.model
+	} else {
+		out["active_model_error"] = err.Error()
 	}
 	b, _ := json.MarshalIndent(out, "", "  ")
 	return string(b), nil
@@ -281,12 +303,39 @@ func tSetConfig(args map[string]interface{}) (string, error) {
 		return "", err
 	}
 	switch key {
+	case "provider":
+		switch value {
+		case "gemini", "openai", "anthropic", "openrouter", "local":
+			cfg.Provider = value
+		default:
+			return "", fmt.Errorf("unknown provider %q (use gemini, openai, anthropic, openrouter, or local)", value)
+		}
 	case "gemini_model":
 		cfg.GeminiModel = value
 	case "gemini_api_key":
 		cfg.GeminiAPIKey = value
+	case "openai_model":
+		cfg.OpenAIModel = value
+	case "openai_api_key":
+		cfg.OpenAIAPIKey = value
+	case "openai_base_url":
+		cfg.OpenAIBaseURL = value
+	case "anthropic_model":
+		cfg.AnthropicModel = value
+	case "anthropic_api_key":
+		cfg.AnthropicAPIKey = value
+	case "openrouter_model":
+		cfg.OpenRouterModel = value
+	case "openrouter_api_key":
+		cfg.OpenRouterAPIKey = value
+	case "local_model":
+		cfg.LocalModel = value
+	case "local_base_url":
+		cfg.LocalBaseURL = value
+	case "local_api_key":
+		cfg.LocalAPIKey = value
 	default:
-		return "", fmt.Errorf("key %q is not editable via set_config (allowed: gemini_model, gemini_api_key)", key)
+		return "", fmt.Errorf("key %q is not editable via set_config", key)
 	}
 	if err := saveConfig(); err != nil {
 		return "", err
@@ -379,18 +428,18 @@ const defaultTools = `{
     },
     {
       "name": "get_config",
-      "description": "Read your configuration (model, and masked API keys).",
+      "description": "Read your configuration: active provider, per-provider models, and masked API keys.",
       "enabled": true,
       "parameters": { "type": "object", "properties": {} }
     },
     {
       "name": "set_config",
-      "description": "Change a config value. Allowed keys: gemini_model, gemini_api_key.",
+      "description": "Change a config value. Keys: provider (gemini/openai/anthropic/openrouter/local); per-provider gemini_model/gemini_api_key, openai_model/openai_api_key/openai_base_url, anthropic_model/anthropic_api_key, openrouter_model/openrouter_api_key, local_model/local_base_url/local_api_key.",
       "enabled": true,
       "parameters": {
         "type": "object",
         "properties": {
-          "key": { "type": "string", "description": "gemini_model or gemini_api_key" },
+          "key": { "type": "string", "description": "e.g. provider, openai_api_key, anthropic_model" },
           "value": { "type": "string", "description": "The new value." }
         },
         "required": ["key", "value"]
