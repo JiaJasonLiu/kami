@@ -19,6 +19,11 @@ on one machine — no Docker, no database.
 You can add more providers later and switch with `set_config provider <name>`
 right from the chat.
 
+- **(Optional) Brave Search key** — for web search, grab a free key at
+  [brave.com/search/api](https://brave.com/search/api/). The wizard asks for it
+  (blank to skip); you can also add it later with `set_config brave_api_key …`.
+  Page fetching (`web_fetch`) works without any key.
+
 ## 2. Choose how you'll talk to it
 
 ### Option A — Direct messages (simplest)
@@ -63,6 +68,10 @@ That's it — the bot replies to `👋 Gateway online`.
   `/agent use <name>` from inside it.
 
 ## Chat commands
+
+You can also just ask in plain language — e.g. *"search the web for today's
+weather in Tokyo"* (web) or *"every day at 8am, send me a summary of the latest
+Go releases"* (a scheduled cron job that posts itself back to this chat).
 
 - `/new` — wipe this conversation's memory
 - `/agents` — list agent profiles

@@ -169,6 +169,10 @@ openai_api_key to sk-…"* — keys are stored `0600` and shown masked.
 - `get_config` / `set_config` — read config and switch provider / change any
   provider's model or API key (Telegram settings are deliberately not
   self-editable so it can't lock itself out)
+- `web_search` / `web_fetch` — search the web (Brave Search API) and download a
+  page as plain text. See **Internet access** below.
+- `cron_add` / `cron_list` / `cron_remove` — schedule recurring prompts. See
+  **Scheduled tasks (cron)** below.
 - `relay_to_code` — send a prompt to a local code service (e.g. a Claude Code
   wrapper) listening on `http://127.0.0.1:8080/execute` and get the terminal
   output back. The agent itself never runs commands (`os/exec` is not used
@@ -176,6 +180,56 @@ openai_api_key to sk-…"* — keys are stored `0600` and shown masked.
 
 Try: *"Read your SOUL and give yourself a name and a dry sense of humour, then
 save it."* — it'll call `read_soul` then `write_soul`.
+
+## Internet access
+
+The agent can reach the web through two tools:
+
+- **`web_fetch(url)`** — downloads an `http`/`https` page and returns it as
+  plain text (scripts, styles and tags stripped). No key required. Only `http`
+  and `https` URLs are accepted, and both the download and the returned text are
+  size-capped so a huge page can't stall the bot or flood its memory.
+- **`web_search(query)`** — queries the [Brave Search API](https://brave.com/search/api/)
+  and returns a short list of titles, URLs and snippets. This one needs a key:
+
+  ```
+  Ask the bot:  "set_config brave_api_key to <your-brave-key>"
+  ```
+
+  (Or paste it when the setup wizard asks — it's optional.) Without a key,
+  `web_search` returns a friendly "not configured" hint instead of failing.
+
+A common flow is `web_search` to find pages, then `web_fetch` to read the most
+promising one. Everything is an outbound GET — the agent still runs no commands
+and touches no files outside its workspace.
+
+## Scheduled tasks (cron)
+
+The agent can schedule work to run on its own, even when you're not chatting:
+
+- **`cron_add(schedule, prompt)`** — `schedule` is a standard 5-field cron
+  expression (`minute hour day-of-month month day-of-week`) and `prompt` is run
+  exactly as if you'd typed it. The job remembers which **agent** and which
+  **topic** it was created in, so a job made in your "News" topic runs as that
+  agent and posts back there.
+- **`cron_list()`** / **`cron_remove(id)`** — inspect and delete jobs.
+
+Examples of schedules:
+
+| Cron          | When |
+|---------------|------|
+| `0 9 * * *`   | every day at 09:00 |
+| `*/30 * * * *`| every 30 minutes |
+| `0 8 * * 1`   | 08:00 every Monday |
+| `0 18 1 * *`  | 18:00 on the 1st of each month |
+
+Jobs live in `state/cron.json` and survive restarts. A small in-process
+scheduler wakes once a minute and runs whatever is due — no system crontab, no
+extra process. Scheduled runs and live messages are serialised, so a job never
+races your conversation.
+
+Try: *"every morning at 8, search the web for the top AI news and send me a
+three-bullet summary"* — it'll call `web_search` inside a `cron_add` job.
 
 ## Adding a new tool (when you want one)
 

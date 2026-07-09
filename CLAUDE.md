@@ -41,12 +41,17 @@ a separate host-level code service (a Claude Code repository wrapper) at
 
 ```
 main.go                    entry point, $KAMI_HOME layout (state/ + workspace/)
-agent.go                   the bounded agent loop (max 8 tool steps)
+agent.go                   the bounded agent loop (max 8 tool steps) +
+                           runAgentTurn/turnMu (serialises bot vs cron turns)
 profiles.go                agent profiles: per-agent soul/tools/history/workspace,
                            /agent chat commands (new, use, delete, list)
 topics.go                  forum topic → agent bindings (state/topics.json),
                            per-message routing, topic-name slugify
 tools.go                   tool registry + handlers (the model's only abilities)
+web.go                     web_search (Brave Search API) + web_fetch
+                           (keyless page → text); outbound GET only, no fs/exec
+cron.go                    in-process cron scheduler: 5-field parser, job store
+                           (state/cron.json), cron_add/list/remove tools
 config.go                  config load/save + interactive setup wizard
 providers.go               multi-provider layer: callModel dispatcher +
                            OpenAI-compatible & Anthropic clients (translate
@@ -97,6 +102,33 @@ and, if it isn't OpenAI- or Anthropic-shaped, a new client + translation pair;
 never make the agent loop aware of provider specifics. Provider is global and
 switchable at runtime through `set_config`; each provider keeps its own
 key/model in config so switching never drops credentials.
+
+## Internet access and scheduling
+
+Two capabilities let the agent act beyond the chat, both standard-library only
+and both still respecting the no-`os/exec` rule (they make outbound HTTP GETs,
+nothing more):
+
+- **Web (`web.go`)**: `web_fetch(url)` downloads an http/https page and returns
+  it as stripped plain text (keyless); `web_search(query)` calls the Brave
+  Search API and needs `brave_api_key` in config (empty key → the tool returns a
+  configuration hint, never a crash). Both share one short-timeout `webClient`
+  and cap response/text size so a huge or slow page can't stall the loop or blow
+  the history budget.
+- **Cron (`cron.go`)**: `cron_add(schedule, prompt)` binds a standard 5-field
+  cron expression to `(agent, thread, prompt)` captured from the current chat
+  context, persisted in `state/cron.json`. `cronLoop` wakes on each minute
+  boundary, and any job whose schedule matches runs its prompt as its agent and
+  posts the reply into its Telegram topic. The 5-field parser supports
+  `*`, ranges, lists and `*/n` steps, with Vixie-cron day-of-month/day-of-week
+  OR semantics.
+
+**Concurrency invariant**: the cron scheduler and the Telegram bot loop can both
+start an agent turn, and a turn mutates the global `activeAgent`/`currentTopic`
+and an agent's history files. Every turn from either source therefore goes
+through `runAgentTurn` (`agent.go`), which holds `turnMu` for the whole
+`handleUserMessage` call. Never call `handleUserMessage` directly from a new
+concurrent path — always route through `runAgentTurn`.
 
 ## Commands
 
