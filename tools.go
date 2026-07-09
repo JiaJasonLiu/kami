@@ -7,6 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"kami-gateway/internal/coderelay"
+	"kami-gateway/internal/workspace"
 )
 
 type ToolDecl struct {
@@ -23,16 +26,17 @@ type ToolsFile struct {
 type toolHandler func(args map[string]interface{}) (string, error)
 
 var handlers = map[string]toolHandler{
-	"list_files":  tListFiles,
-	"read_file":   tReadFile,
-	"write_file":  tWriteFile,
-	"delete_file": tDeleteFile,
-	"read_soul":   tReadSoul,
-	"write_soul":  tWriteSoul,
-	"read_tools":  tReadTools,
-	"write_tools": tWriteTools,
-	"get_config":  tGetConfig,
-	"set_config":  tSetConfig,
+	"list_files":    tListFiles,
+	"read_file":     tReadFile,
+	"write_file":    tWriteFile,
+	"delete_file":   tDeleteFile,
+	"read_soul":     tReadSoul,
+	"write_soul":    tWriteSoul,
+	"read_tools":    tReadTools,
+	"write_tools":   tWriteTools,
+	"get_config":    tGetConfig,
+	"set_config":    tSetConfig,
+	"relay_to_code": tRelayToCode,
 }
 
 // loadTools reads and parses tools.json from the state directory.
@@ -99,53 +103,60 @@ func argStr(args map[string]interface{}, key string) (string, error) {
 	return s, nil
 }
 
+// agentWorkspace opens the sandbox rooted at the workspace directory. All file tools
+// go through the workspace package (SYSTEM LAYER 1), which is the single enforcement
+// point for path validation — no tool touches the os package with a model-chosen path.
+func agentWorkspace() (*workspace.SafeWorkspace, error) {
+	return workspace.NewSafeWorkspace(workspaceRoot())
+}
+
 // tListFiles walks the workspace directory tree and returns a newline-separated list of
 // relative paths with sizes. The blank identifier _ discards the unused args parameter,
 // which is required by the toolHandler function type signature.
 func tListFiles(_ map[string]interface{}) (string, error) {
-	root := workspaceRoot()
-	var files []string
-	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-		rel, _ := filepath.Rel(root, p)
-		files = append(files, fmt.Sprintf("%s (%d bytes)", rel, info.Size()))
-		return nil
-	})
+	ws, err := agentWorkspace()
 	if err != nil {
 		return "", err
 	}
-	if len(files) == 0 {
+	paths, err := ws.ListFiles("")
+	if err != nil {
+		return "", err
+	}
+	if len(paths) == 0 {
 		return "workspace is empty", nil
+	}
+	var files []string
+	for _, rel := range paths {
+		info, err := os.Stat(filepath.Join(ws.RootPath, rel))
+		if err != nil {
+			return "", err
+		}
+		files = append(files, fmt.Sprintf("%s (%d bytes)", rel, info.Size()))
 	}
 	return strings.Join(files, "\n"), nil
 }
 
-// tReadFile reads a workspace file by relative path, validating the path first via safePath
-// to prevent directory traversal attacks.
+// tReadFile reads a workspace file by relative path; the workspace package validates
+// the path to prevent directory traversal attacks.
 func tReadFile(args map[string]interface{}) (string, error) {
 	rel, err := argStr(args, "path")
 	if err != nil {
 		return "", err
 	}
-	abs, err := safePath(rel)
+	ws, err := agentWorkspace()
 	if err != nil {
 		return "", err
 	}
-	b, err := os.ReadFile(abs)
+	b, err := ws.ReadFile(rel)
 	if err != nil {
 		return "", err
 	}
 	return string(b), nil
 }
 
-// tWriteFile creates or overwrites a file in the workspace.
-// os.MkdirAll on filepath.Dir(abs) ensures any intermediate directories exist before writing,
-// so the model can create files in subdirectories without a separate mkdir step.
+// tWriteFile creates or overwrites a file in the workspace. The workspace package
+// creates any intermediate directories, so the model can create files in
+// subdirectories without a separate mkdir step.
 func tWriteFile(args map[string]interface{}) (string, error) {
 	rel, err := argStr(args, "path")
 	if err != nil {
@@ -155,14 +166,11 @@ func tWriteFile(args map[string]interface{}) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	abs, err := safePath(rel)
+	ws, err := agentWorkspace()
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+	if err := ws.WriteFile(rel, []byte(content)); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("wrote %d bytes to %s", len(content), rel), nil
@@ -174,11 +182,11 @@ func tDeleteFile(args map[string]interface{}) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	abs, err := safePath(rel)
+	ws, err := agentWorkspace()
 	if err != nil {
 		return "", err
 	}
-	if err := os.Remove(abs); err != nil {
+	if err := ws.DeleteFile(rel); err != nil {
 		return "", err
 	}
 	return "deleted " + rel, nil
@@ -233,6 +241,17 @@ func tWriteTools(args map[string]interface{}) (string, error) {
 		return "", err
 	}
 	return "tools.json updated; changes take effect on your next reply", nil
+}
+
+// tRelayToCode forwards a prompt to the local code service over loopback HTTP
+// (SYSTEM LAYER 2). The agent never runs commands itself — no os/exec anywhere —
+// so even a fully compromised prompt can only ask the external service nicely.
+func tRelayToCode(args map[string]interface{}) (string, error) {
+	prompt, err := argStr(args, "prompt")
+	if err != nil {
+		return "", err
+	}
+	return coderelay.RelayToCodeService(prompt)
 }
 
 // tGetConfig returns a JSON snapshot of the current config, masking sensitive API keys
@@ -346,6 +365,16 @@ const defaultTools = `{
         "type": "object",
         "properties": { "content": { "type": "string", "description": "The full new tools.json." } },
         "required": ["content"]
+      }
+    },
+    {
+      "name": "relay_to_code",
+      "description": "Send a prompt to the local code service (Claude Code wrapper on 127.0.0.1:8080) and get back the terminal output. Use for coding and automation tasks that need the development environment.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": { "prompt": { "type": "string", "description": "The instruction to relay to the code service." } },
+        "required": ["prompt"]
       }
     },
     {

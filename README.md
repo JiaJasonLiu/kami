@@ -80,6 +80,10 @@ replies. Only your configured chat id is answered; everyone else is ignored.
 - `get_config` / `set_config` — read config, change `gemini_model` or
   `gemini_api_key` (Telegram settings are deliberately not self-editable so it
   can't lock itself out)
+- `relay_to_code` — send a prompt to a local code service (e.g. a Claude Code
+  wrapper) listening on `http://127.0.0.1:8080/execute` and get the terminal
+  output back. The agent itself never runs commands (`os/exec` is not used
+  anywhere); execution happens on the other side of the loopback boundary.
 
 Try: *"Read your SOUL and give yourself a name and a dry sense of humour, then
 save it."* — it'll call `read_soul` then `write_soul`.
@@ -90,7 +94,23 @@ save it."* — it'll call `read_soul` then `write_soul`.
 2. Register it in the `handlers` map.
 3. Add a declaration to `state/tools.json` (or let the model do that part).
 
-## Run it as a service (optional)
+## Run it as a hardened system service (recommended)
+
+`setup.sh` installs the binary as a locked-down systemd service: it creates a
+no-login `tg-agent` system user, installs to `/opt/tg-agent` (binary
+`chmod 700`), and writes a unit with `ProtectSystem=strict`, `ProtectHome=yes`,
+`ReadWritePaths=/opt/tg-agent/storage`, `PrivateTmp=yes` and an empty
+`CapabilityBoundingSet=` — so the kernel itself guarantees the agent can only
+write inside its own storage directory.
+
+```sh
+make build
+sudo ./setup.sh                 # installs + enables tg-agent.service
+sudo -u tg-agent KAMI_HOME=/opt/tg-agent/storage /opt/tg-agent/kami-gateway setup
+sudo systemctl start tg-agent.service
+```
+
+## Run it as a user service (lighter alternative)
 
 ```ini
 # ~/.config/systemd/user/kami-gateway.service
