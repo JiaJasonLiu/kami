@@ -13,14 +13,43 @@ import (
 	"time"
 )
 
+// tgForumTopic is the payload Telegram attaches to the service message sent
+// when a forum topic is created, and echoed on reply_to_message for early
+// messages within a topic. Only the name is needed to derive an agent.
+type tgForumTopic struct {
+	Name string `json:"name"`
+}
+
+type tgMessage struct {
+	Chat struct {
+		ID int64 `json:"id"`
+	} `json:"chat"`
+	Text string `json:"text"`
+	// MessageThreadID identifies the forum topic; absent (0) in DMs and in
+	// the group's General topic.
+	MessageThreadID int64 `json:"message_thread_id"`
+	// IsTopicMessage is true only for messages inside a non-General topic.
+	IsTopicMessage bool `json:"is_topic_message"`
+	// ForumTopicCreated is set on the service message announcing a new topic.
+	ForumTopicCreated *tgForumTopic `json:"forum_topic_created"`
+	// ReplyToMessage lets us recover a topic's title from an ordinary message
+	// when we never saw the creation event (e.g. topic made while offline).
+	ReplyToMessage *tgMessage `json:"reply_to_message"`
+}
+
+// topicID returns the forum thread this message belongs to, or 0 for a DM or
+// the General topic. Only genuine topic messages are treated as threaded, so
+// plain reply-chains in non-forum groups don't accidentally route by thread.
+func (m *tgMessage) topicID() int64 {
+	if m.IsTopicMessage {
+		return m.MessageThreadID
+	}
+	return 0
+}
+
 type tgUpdate struct {
-	UpdateID int64 `json:"update_id"`
-	Message  *struct {
-		Chat struct {
-			ID int64 `json:"id"`
-		} `json:"chat"`
-		Text string `json:"text"`
-	} `json:"message"`
+	UpdateID int64      `json:"update_id"`
+	Message  *tgMessage `json:"message"`
 }
 
 type tgUpdatesResp struct {
@@ -56,13 +85,23 @@ func tgGetUpdates(offset int64, timeout int) ([]tgUpdate, error) {
 	return r.Result, nil
 }
 
-// tgSend sends a text message to Telegram, splitting it into chunks if it exceeds
-// Telegram's 4096-character message limit. Errors are logged but not returned because
-// a failed send is not fatal — the bot loop continues regardless.
-func tgSend(chatID int64, text string) {
+// tgSend sends a text message to the chat (no specific topic). It is a thin
+// wrapper over tgSendToThread used for gateway-level notices like the
+// online/offline banners.
+func tgSend(chatID int64, text string) { tgSendToThread(chatID, 0, text) }
+
+// tgSendToThread sends a text message to Telegram, into a specific forum
+// topic when thread is non-zero, splitting it into chunks if it exceeds
+// Telegram's 4096-character message limit. Errors are logged but not returned
+// because a failed send is not fatal — the bot loop continues regardless.
+func tgSendToThread(chatID, thread int64, text string) {
 	for _, chunk := range chunk(text, 4000) {
-		payload, _ := json.Marshal(map[string]interface{}{"chat_id": chatID, "text": chunk})
-		resp, err := httpClient.Post(tgAPI("sendMessage"), "application/json", bytes.NewReader(payload))
+		payload := map[string]interface{}{"chat_id": chatID, "text": chunk}
+		if thread != 0 {
+			payload["message_thread_id"] = thread
+		}
+		body, _ := json.Marshal(payload)
+		resp, err := httpClient.Post(tgAPI("sendMessage"), "application/json", bytes.NewReader(body))
 		if err != nil {
 			log.Printf("sendMessage error: %v", err)
 			return
@@ -71,11 +110,16 @@ func tgSend(chatID int64, text string) {
 	}
 }
 
-// tgSendTyping sends a "typing..." indicator to the chat so the user knows the bot is working.
-// Errors are silently ignored — this is a best-effort UX enhancement, not a critical operation.
-func tgSendTyping(chatID int64) {
-	payload, _ := json.Marshal(map[string]interface{}{"chat_id": chatID, "action": "typing"})
-	resp, err := httpClient.Post(tgAPI("sendChatAction"), "application/json", bytes.NewReader(payload))
+// tgSendTyping sends a "typing..." indicator into the given topic so the user
+// knows the bot is working. Errors are silently ignored — this is a
+// best-effort UX enhancement, not a critical operation.
+func tgSendTyping(chatID, thread int64) {
+	payload := map[string]interface{}{"chat_id": chatID, "action": "typing"}
+	if thread != 0 {
+		payload["message_thread_id"] = thread
+	}
+	body, _ := json.Marshal(payload)
+	resp, err := httpClient.Post(tgAPI("sendChatAction"), "application/json", bytes.NewReader(body))
 	if err == nil {
 		resp.Body.Close()
 	}
@@ -154,18 +198,57 @@ func runBot() {
 		for _, up := range updates {
 			offset = up.UpdateID
 			saveOffset(offset)
-			if up.Message == nil || up.Message.Text == "" {
+			if up.Message == nil {
 				continue
 			}
 			if up.Message.Chat.ID != cfg.TelegramChatID {
 				log.Printf("ignoring message from unauthorised chat %d", up.Message.Chat.ID)
 				continue
 			}
+
+			// A new forum topic: provision and bind an agent, then greet it.
+			if tc := up.Message.ForumTopicCreated; tc != nil {
+				thread := up.Message.MessageThreadID
+				name, created, err := onForumTopicCreated(thread, tc.Name)
+				if err != nil {
+					log.Printf("forum topic %q: %v", tc.Name, err)
+					continue
+				}
+				verb := "bound to existing"
+				if created {
+					verb = "created"
+				}
+				log.Printf("topic %q (%d) -> agent %q (%s)", tc.Name, thread, name, verb)
+				tgSendToThread(cfg.TelegramChatID, thread, fmt.Sprintf("🧵 This topic now belongs to agent %q. Say hi!", name))
+				continue
+			}
+
+			if up.Message.Text == "" {
+				continue
+			}
+
+			// Recover a topic's agent lazily if we never saw its creation
+			// event but the message still carries the topic title.
+			thread := up.Message.topicID()
+			if thread != 0 {
+				if _, bound := topicBindings[thread]; !bound {
+					if rt := up.Message.ReplyToMessage; rt != nil && rt.ForumTopicCreated != nil {
+						if _, _, err := onForumTopicCreated(thread, rt.ForumTopicCreated.Name); err != nil {
+							log.Printf("lazy topic bind (%d): %v", thread, err)
+						}
+					}
+				}
+			}
+
+			// Route this message to the agent that owns its topic.
+			currentTopic = thread
+			activeAgent = agentForThread(thread)
+
 			text := up.Message.Text
-			log.Printf("user: %s", truncate(text, 120))
-			tgSendTyping(cfg.TelegramChatID)
+			log.Printf("user[%s]: %s", activeAgent, truncate(text, 120))
+			tgSendTyping(cfg.TelegramChatID, thread)
 			reply := handleUserMessage(text)
-			tgSend(cfg.TelegramChatID, reply)
+			tgSendToThread(cfg.TelegramChatID, thread, reply)
 		}
 	}
 }

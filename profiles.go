@@ -24,10 +24,17 @@ const (
 	activeAgentFile = "agent.txt"
 )
 
-// activeAgent is the name of the profile all soul/tools/history/workspace
-// lookups currently resolve to. It is only mutated by loadActiveAgent and
-// switchAgent, both on the single bot-loop goroutine.
+// activeAgent is the profile the CURRENT message resolves to for all
+// soul/tools/history/workspace lookups. The bot loop sets it per message
+// from the message's topic (see agentForThread); tests and DMs leave it at
+// the DM default. Only touched on the single bot-loop goroutine.
 var activeAgent = defaultAgent
+
+// dmAgent is the persistent agent for direct messages and the group's
+// General topic (thread 0). It survives restarts via agent.txt. Binding a
+// forum topic to another agent must never change this — that is what keeps
+// per-topic switches from leaking into the DM conversation.
+var dmAgent = defaultAgent
 
 // agentNameRe restricts agent names to a safe slug. This is a security
 // boundary, not cosmetics: the name is joined into filesystem paths, so it
@@ -156,6 +163,7 @@ func switchAgent(name string) error {
 		return err
 	}
 	activeAgent = name
+	dmAgent = name
 	return os.WriteFile(statePath(activeAgentFile), []byte(name), 0o600)
 }
 
@@ -174,7 +182,32 @@ func deleteAgent(name string) error {
 	if !agentExists(name) {
 		return fmt.Errorf("agent %q does not exist", name)
 	}
-	return os.RemoveAll(filepath.Join(home, "agents", name))
+	if err := os.RemoveAll(filepath.Join(home, "agents", name)); err != nil {
+		return err
+	}
+	unbindAgentTopics(name)
+	return nil
+}
+
+// assignActiveAgent points the current conversation context at an existing
+// agent. Inside a forum topic (currentTopic != 0) it binds just that topic;
+// in a DM or the General topic it performs the gateway-wide switch persisted
+// to agent.txt. It returns a short human label for the affected scope.
+func assignActiveAgent(name string) (string, error) {
+	if currentTopic != 0 {
+		if !agentExists(name) {
+			return "", fmt.Errorf("agent %q does not exist; create it with /agent new %s", name, name)
+		}
+		if err := bindTopic(currentTopic, name); err != nil {
+			return "", err
+		}
+		activeAgent = name
+		return "this topic", nil
+	}
+	if err := switchAgent(name); err != nil {
+		return "", err
+	}
+	return "the gateway", nil
 }
 
 // loadActiveAgent restores the persisted active agent at startup, falling
@@ -182,6 +215,7 @@ func deleteAgent(name string) error {
 // profile that no longer exists.
 func loadActiveAgent() {
 	activeAgent = defaultAgent
+	dmAgent = defaultAgent
 	b, err := os.ReadFile(statePath(activeAgentFile))
 	if err != nil {
 		return
@@ -189,6 +223,7 @@ func loadActiveAgent() {
 	name := strings.TrimSpace(string(b))
 	if validAgentName(name) == nil && agentExists(name) {
 		activeAgent = name
+		dmAgent = name
 	}
 }
 
@@ -201,12 +236,15 @@ func handleAgentCommand(text string) string {
 		b.WriteString("Agents:\n")
 		for _, name := range listAgents() {
 			marker := "  "
-			if name == activeAgent {
+			if name == agentForThread(currentTopic) {
 				marker = "▶ "
 			}
 			fmt.Fprintf(&b, "%s%s\n", marker, name)
 		}
-		b.WriteString("\n/agent new <name> [personality…] — create (and switch to) a new agent\n/agent use <name> — switch agents\n/agent delete <name> — delete an agent and its files")
+		if currentTopic != 0 {
+			fmt.Fprintf(&b, "\nThis topic → %q.\n", agentForThread(currentTopic))
+		}
+		b.WriteString("\n/agent new <name> [personality…] — create an agent (and use it here)\n/agent use <name> — assign an agent to this chat/topic\n/agent delete <name> — delete an agent and its files")
 		return b.String()
 	}
 
@@ -221,21 +259,23 @@ func handleAgentCommand(text string) string {
 		if err := createAgent(name, personality); err != nil {
 			return "⚠️ " + err.Error()
 		}
-		if err := switchAgent(name); err != nil {
-			return "⚠️ created, but could not switch: " + err.Error()
+		scope, err := assignActiveAgent(name)
+		if err != nil {
+			return "⚠️ created, but could not assign: " + err.Error()
 		}
-		return fmt.Sprintf("✨ Created agent %q with its own soul, tools, memory and workspace — now active. Say hi!", name)
+		return fmt.Sprintf("✨ Created agent %q with its own soul, tools, memory and workspace — now active for %s. Say hi!", name, scope)
 	case "use":
 		if len(args) != 1 {
 			return "usage: /agent use <name>"
 		}
-		if args[0] == activeAgent {
-			return fmt.Sprintf("%q is already the active agent.", activeAgent)
+		if args[0] == agentForThread(currentTopic) {
+			return fmt.Sprintf("%q is already active here.", args[0])
 		}
-		if err := switchAgent(args[0]); err != nil {
+		scope, err := assignActiveAgent(args[0])
+		if err != nil {
 			return "⚠️ " + err.Error()
 		}
-		return fmt.Sprintf("🔀 Switched to agent %q. Its own memory and workspace are now in effect.", activeAgent)
+		return fmt.Sprintf("🔀 Agent %q is now active for %s. Its own memory and workspace are in effect.", args[0], scope)
 	case "delete":
 		if len(args) != 1 {
 			return "usage: /agent delete <name>"
@@ -245,12 +285,13 @@ func handleAgentCommand(text string) string {
 		}
 		return fmt.Sprintf("🗑 Deleted agent %q and all of its files.", args[0])
 	default:
-		// Convenience shorthand: "/agent coder" switches to coder.
+		// Convenience shorthand: "/agent coder" assigns coder here.
 		if len(fields) == 2 {
-			if err := switchAgent(sub); err != nil {
+			scope, err := assignActiveAgent(sub)
+			if err != nil {
 				return "⚠️ " + err.Error()
 			}
-			return fmt.Sprintf("🔀 Switched to agent %q.", activeAgent)
+			return fmt.Sprintf("🔀 Agent %q is now active for %s.", sub, scope)
 		}
 		return "usage: /agent [new|use|delete] <name>"
 	}

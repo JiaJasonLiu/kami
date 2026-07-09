@@ -60,6 +60,7 @@ func main() {
 		log.Fatalf("could not create directories: %v", err)
 	}
 	loadActiveAgent()
+	loadTopicBindings()
 
 	forceSetup := len(os.Args) > 1 && (os.Args[1] == "setup" || os.Args[1] == "--setup")
 	exists, err := loadConfig()

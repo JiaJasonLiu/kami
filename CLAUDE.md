@@ -42,6 +42,8 @@ main.go                    entry point, $KAMI_HOME layout (state/ + workspace/)
 agent.go                   the bounded agent loop (max 8 tool steps)
 profiles.go                agent profiles: per-agent soul/tools/history/workspace,
                            /agent chat commands (new, use, delete, list)
+topics.go                  forum topic → agent bindings (state/topics.json),
+                           per-message routing, topic-name slugify
 tools.go                   tool registry + handlers (the model's only abilities)
 config.go                  config load/save + interactive setup wizard
 telegram.go / gemini.go    thin API clients (long-poll Telegram, call Gemini)
@@ -63,6 +65,16 @@ agent lives under `agents/<name>/{state,workspace}`. Each agent's workspace
 is its own Layer-1 sandbox root — agents cannot see each other's files.
 Agent names are validated against `^[a-z0-9][a-z0-9_-]{0,31}$` before being
 joined into paths; never relax that check.
+
+Which agent a message uses is chosen per-message by the bot loop, not by a
+single global switch. `activeAgent` is the current message's agent (set from
+its Telegram forum topic before `handleUserMessage`); `dmAgent` (persisted in
+`agent.txt`) is the default for direct messages and the group's General topic
+(thread 0). Forum topics bind to agents in `state/topics.json` via
+`topics.go`; `agentForThread(0)` returns `dmAgent`, a bound thread returns its
+agent, an unbound thread falls back to `kami`. Binding a topic sets
+`activeAgent` for that turn but must never touch `dmAgent` — that separation
+is what stops a topic switch from leaking into DMs.
 
 ## Commands
 
