@@ -14,7 +14,7 @@ const (
 // Returning nil (rather than an empty slice) when the file is missing is idiomatic Go:
 // nil slices and empty slices behave identically with append and range.
 func loadHistory() []gContent {
-	b, err := os.ReadFile(statePath(historyFile))
+	b, err := os.ReadFile(agentStatePath(historyFile))
 	if err != nil {
 		return nil
 	}
@@ -29,7 +29,7 @@ func loadHistory() []gContent {
 func saveHistory(h []gContent) {
 	h = trimHistory(h)
 	b, _ := json.MarshalIndent(h, "", "  ")
-	_ = os.WriteFile(statePath(historyFile), b, 0o644)
+	_ = os.WriteFile(agentStatePath(historyFile), b, 0o644)
 }
 
 // isUserText reports whether a content entry is a genuine user text message,
@@ -69,5 +69,5 @@ func trimHistory(h []gContent) []gContent {
 // clearHistory deletes the history file, effectively starting a fresh conversation.
 // The error is ignored because if the file doesn't exist the outcome is the same: no history.
 func clearHistory() {
-	_ = os.Remove(statePath(historyFile))
+	_ = os.Remove(agentStatePath(historyFile))
 }

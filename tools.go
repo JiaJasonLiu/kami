@@ -44,7 +44,7 @@ var handlers = map[string]toolHandler{
 // struct is only used locally; Go copies are cheap for small structs.
 func loadTools() (ToolsFile, error) {
 	var tf ToolsFile
-	b, err := os.ReadFile(statePath(toolsFile))
+	b, err := os.ReadFile(agentStatePath(toolsFile))
 	if err != nil {
 		return tf, err
 	}
@@ -192,9 +192,9 @@ func tDeleteFile(args map[string]interface{}) (string, error) {
 	return "deleted " + rel, nil
 }
 
-// tReadSoul returns the current contents of SOUL.md, the model's own system prompt.
+// tReadSoul returns the current contents of the active agent's SOUL.md, its own system prompt.
 func tReadSoul(_ map[string]interface{}) (string, error) {
-	b, err := os.ReadFile(statePath(soulFile))
+	b, err := os.ReadFile(agentStatePath(soulFile))
 	if err != nil {
 		return "", err
 	}
@@ -211,7 +211,7 @@ func tWriteSoul(args map[string]interface{}) (string, error) {
 	if strings.TrimSpace(content) == "" {
 		return "", errors.New("refusing to write an empty SOUL.md")
 	}
-	if err := os.WriteFile(statePath(soulFile), []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(agentStatePath(soulFile), []byte(content), 0o644); err != nil {
 		return "", err
 	}
 	return "SOUL.md updated; it takes effect on your next reply", nil
@@ -219,7 +219,7 @@ func tWriteSoul(args map[string]interface{}) (string, error) {
 
 // tReadTools returns the raw JSON of tools.json so the model can inspect its own tool manifest.
 func tReadTools(_ map[string]interface{}) (string, error) {
-	b, err := os.ReadFile(statePath(toolsFile))
+	b, err := os.ReadFile(agentStatePath(toolsFile))
 	if err != nil {
 		return "", err
 	}
@@ -237,7 +237,7 @@ func tWriteTools(args map[string]interface{}) (string, error) {
 	if err := json.Unmarshal([]byte(content), &probe); err != nil {
 		return "", fmt.Errorf("not valid tools.json: %v", err)
 	}
-	if err := os.WriteFile(statePath(toolsFile), []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(agentStatePath(toolsFile), []byte(content), 0o644); err != nil {
 		return "", err
 	}
 	return "tools.json updated; changes take effect on your next reply", nil

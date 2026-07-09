@@ -40,6 +40,8 @@ a separate host-level code service (a Claude Code repository wrapper) at
 ```
 main.go                    entry point, $KAMI_HOME layout (state/ + workspace/)
 agent.go                   the bounded agent loop (max 8 tool steps)
+profiles.go                agent profiles: per-agent soul/tools/history/workspace,
+                           /agent chat commands (new, use, delete, list)
 tools.go                   tool registry + handlers (the model's only abilities)
 config.go                  config load/save + interactive setup wizard
 telegram.go / gemini.go    thin API clients (long-poll Telegram, call Gemini)
@@ -52,8 +54,15 @@ setup.sh                   LAYER 2: root installer — tg-agent user + hardened
 ```
 
 Runtime state lives under `$KAMI_HOME` (default `.`; `/opt/tg-agent/storage`
-in production): `state/` holds config/SOUL.md/tools.json/history,
-`workspace/` is the model's only writable area.
+in production). Gateway-level files (`config.json`, `offset.txt`,
+`agent.txt`) live in `state/` and resolve through `statePath()`. Per-agent
+files (`SOUL.md`, `tools.json`, `history.json`) resolve through
+`agentStatePath()` and belong to the active profile: the default agent
+(`kami`) uses the legacy top-level `state/` + `workspace/`, every other
+agent lives under `agents/<name>/{state,workspace}`. Each agent's workspace
+is its own Layer-1 sandbox root — agents cannot see each other's files.
+Agent names are validated against `^[a-z0-9][a-z0-9_-]{0,31}$` before being
+joined into paths; never relax that check.
 
 ## Commands
 
