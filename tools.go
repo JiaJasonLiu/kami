@@ -37,6 +37,11 @@ var handlers = map[string]toolHandler{
 	"get_config":    tGetConfig,
 	"set_config":    tSetConfig,
 	"relay_to_code": tRelayToCode,
+	"web_search":    tWebSearch,
+	"web_fetch":     tWebFetch,
+	"cron_add":      tCronAdd,
+	"cron_list":     tCronList,
+	"cron_remove":   tCronRemove,
 }
 
 // loadTools reads and parses tools.json from the state directory.
@@ -270,6 +275,7 @@ func tGetConfig(_ map[string]interface{}) (string, error) {
 		"openrouter_api_key": mask(cfg.OpenRouterAPIKey),
 		"local_model":        cfg.LocalModel,
 		"local_base_url":     cfg.LocalBaseURL,
+		"brave_api_key":      mask(cfg.BraveAPIKey),
 		"telegram_token":     mask(cfg.TelegramToken),
 		"telegram_chat_id":   cfg.TelegramChatID,
 		"editable_via_set_config": []string{
@@ -279,6 +285,7 @@ func tGetConfig(_ map[string]interface{}) (string, error) {
 			"anthropic_model", "anthropic_api_key",
 			"openrouter_model", "openrouter_api_key",
 			"local_model", "local_base_url", "local_api_key",
+			"brave_api_key",
 		},
 	}
 	if mc, err := activeModel(); err == nil {
@@ -334,6 +341,8 @@ func tSetConfig(args map[string]interface{}) (string, error) {
 		cfg.LocalBaseURL = value
 	case "local_api_key":
 		cfg.LocalAPIKey = value
+	case "brave_api_key":
+		cfg.BraveAPIKey = value
 	default:
 		return "", fmt.Errorf("key %q is not editable via set_config", key)
 	}
@@ -427,6 +436,55 @@ const defaultTools = `{
       }
     },
     {
+      "name": "web_search",
+      "description": "Search the web for up-to-date information via the Brave Search API. Returns a numbered list of titles, URLs and snippets. Needs brave_api_key to be configured.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": { "query": { "type": "string", "description": "What to search for." } },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "web_fetch",
+      "description": "Download an http/https web page and return it as plain text (HTML stripped). Use after web_search to read a result, or on any URL you already have.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": { "url": { "type": "string", "description": "The http(s) URL to fetch." } },
+        "required": ["url"]
+      }
+    },
+    {
+      "name": "cron_add",
+      "description": "Schedule a recurring task. The prompt runs automatically on the given schedule as this agent, and the reply is posted back into this chat/topic. Use for reminders, digests, periodic checks.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "schedule": { "type": "string", "description": "Standard 5-field cron: 'min hour day-of-month month day-of-week'. E.g. '0 9 * * *' = 09:00 daily; '*/30 * * * *' = every 30 min; '0 8 * * 1' = 08:00 every Monday." },
+          "prompt": { "type": "string", "description": "The instruction to run on schedule, exactly as if the owner typed it." }
+        },
+        "required": ["schedule", "prompt"]
+      }
+    },
+    {
+      "name": "cron_list",
+      "description": "List all scheduled cron jobs with their id, schedule, agent, topic and prompt.",
+      "enabled": true,
+      "parameters": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "cron_remove",
+      "description": "Delete a scheduled cron job by its id (from cron_list).",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": { "id": { "type": "string", "description": "The job id to remove." } },
+        "required": ["id"]
+      }
+    },
+    {
       "name": "get_config",
       "description": "Read your configuration: active provider, per-provider models, and masked API keys.",
       "enabled": true,
@@ -434,7 +492,7 @@ const defaultTools = `{
     },
     {
       "name": "set_config",
-      "description": "Change a config value. Keys: provider (gemini/openai/anthropic/openrouter/local); per-provider gemini_model/gemini_api_key, openai_model/openai_api_key/openai_base_url, anthropic_model/anthropic_api_key, openrouter_model/openrouter_api_key, local_model/local_base_url/local_api_key.",
+      "description": "Change a config value. Keys: provider (gemini/openai/anthropic/openrouter/local); per-provider gemini_model/gemini_api_key, openai_model/openai_api_key/openai_base_url, anthropic_model/anthropic_api_key, openrouter_model/openrouter_api_key, local_model/local_base_url/local_api_key; brave_api_key (enables web_search).",
       "enabled": true,
       "parameters": {
         "type": "object",

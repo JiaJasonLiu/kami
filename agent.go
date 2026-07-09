@@ -5,9 +5,28 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 )
 
 const maxToolSteps = 8
+
+// turnMu serialises agent turns. Both the Telegram bot loop and the cron
+// scheduler drive conversations through runAgentTurn, and each turn mutates the
+// global activeAgent/currentTopic and reads/writes an agent's history files, so
+// they must never run concurrently.
+var turnMu sync.Mutex
+
+// runAgentTurn runs a single message against a given agent and topic, returning
+// the reply. It sets the per-turn routing globals under turnMu so a scheduled
+// cron run and a live Telegram message can't interleave. Network sending is left
+// to the caller so it happens outside the lock.
+func runAgentTurn(agent string, thread int64, text string) string {
+	turnMu.Lock()
+	defer turnMu.Unlock()
+	currentTopic = thread
+	activeAgent = agent
+	return handleUserMessage(text)
+}
 
 // handleUserMessage is the core agent loop: it handles built-in slash commands first,
 // then runs the Gemini agentic loop that may call tools multiple times before producing

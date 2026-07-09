@@ -181,6 +181,7 @@ func runBot() {
 	}
 	log.Printf("kami-gateway up. provider=%s model=%s chat=%d agent=%s", provider, model, cfg.TelegramChatID, activeAgent)
 	tgSetCommands()
+	go cronLoop()
 	tgSend(cfg.TelegramChatID, "👋 Gateway online. Say something, or /new to reset.")
 
 	sig := make(chan os.Signal, 1)
@@ -245,14 +246,14 @@ func runBot() {
 				}
 			}
 
-			// Route this message to the agent that owns its topic.
-			currentTopic = thread
-			activeAgent = agentForThread(thread)
-
+			// Route this message to the agent that owns its topic. The
+			// per-turn routing globals are set inside runAgentTurn under a
+			// lock so a concurrent cron run can't interleave with it.
+			agent := agentForThread(thread)
 			text := up.Message.Text
-			log.Printf("user[%s]: %s", activeAgent, truncate(text, 120))
+			log.Printf("user[%s]: %s", agent, truncate(text, 120))
 			tgSendTyping(cfg.TelegramChatID, thread)
-			reply := handleUserMessage(text)
+			reply := runAgentTurn(agent, thread, text)
 			tgSendToThread(cfg.TelegramChatID, thread, reply)
 		}
 	}

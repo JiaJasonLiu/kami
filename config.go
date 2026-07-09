@@ -41,6 +41,11 @@ type Config struct {
 
 	TelegramToken  string `json:"telegram_token"`
 	TelegramChatID int64  `json:"telegram_chat_id"`
+
+	// BraveAPIKey enables the web_search tool (Brave Search API). Web access is
+	// optional: web_fetch works without it, and if it is empty web_search
+	// returns a configuration hint instead of searching.
+	BraveAPIKey string `json:"brave_api_key,omitempty"`
 }
 
 // configComplete reports whether the gateway has enough config to run: a
@@ -87,7 +92,7 @@ func saveConfig() error {
 func runSetup() error {
 	in := bufio.NewReader(os.Stdin)
 	fmt.Println("=== kami-gateway setup ===")
-	fmt.Println("(everything is stored locally under ./state — nothing leaves this machine except calls to Gemini and Telegram)")
+	fmt.Println("(everything is stored locally under ./state — nothing leaves this machine except calls to your AI provider, Telegram, and any web pages the agent looks up)")
 	fmt.Println()
 
 	cfg.Provider = strings.ToLower(strings.TrimSpace(prompt(in, "AI provider (gemini/openai/anthropic/openrouter/local)", orDefault(cfg.Provider, "gemini"))))
@@ -117,6 +122,7 @@ func runSetup() error {
 		cfg.GeminiModel = strings.TrimSpace(prompt(in, "Gemini model", orDefault(cfg.GeminiModel, "gemini-2.0-flash")))
 	}
 	cfg.TelegramToken = strings.TrimSpace(prompt(in, "Telegram bot token (from @BotFather)", cfg.TelegramToken))
+	cfg.BraveAPIKey = strings.TrimSpace(prompt(in, "Brave Search API key for web_search (optional, blank to skip)", cfg.BraveAPIKey))
 
 	if cfg.TelegramChatID == 0 {
 		fmt.Println()
