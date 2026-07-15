@@ -42,6 +42,10 @@ var handlers = map[string]toolHandler{
 	"cron_add":      tCronAdd,
 	"cron_list":     tCronList,
 	"cron_remove":   tCronRemove,
+	"skill_list":    tSkillList,
+	"skill_read":    tSkillRead,
+	"skill_write":   tSkillWrite,
+	"skill_delete":  tSkillDelete,
 }
 
 // loadTools reads and parses tools.json from the state directory.
@@ -482,6 +486,45 @@ const defaultTools = `{
         "type": "object",
         "properties": { "id": { "type": "string", "description": "The job id to remove." } },
         "required": ["id"]
+      }
+    },
+    {
+      "name": "skill_list",
+      "description": "List your skills: reusable markdown instruction files, each with a one-line description. Skills also appear in your system prompt.",
+      "enabled": true,
+      "parameters": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "skill_read",
+      "description": "Load the full text of one or more skills into context. Do this before starting work a skill covers, then follow its instructions.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": { "name": { "type": "string", "description": "A skill name, or several separated by commas (e.g. 'weekly-report,style-guide')." } },
+        "required": ["name"]
+      }
+    },
+    {
+      "name": "skill_write",
+      "description": "Create or update a skill: a markdown file of reusable instructions. Start it with a heading and a one-line description (shown in the catalog). Use when the owner teaches you a repeatable procedure.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "Skill name: lowercase letters, digits, - or _ (max 64 chars)." },
+          "content": { "type": "string", "description": "The full markdown body of the skill." }
+        },
+        "required": ["name", "content"]
+      }
+    },
+    {
+      "name": "skill_delete",
+      "description": "Delete a skill by name.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": { "name": { "type": "string", "description": "The skill to delete." } },
+        "required": ["name"]
       }
     },
     {

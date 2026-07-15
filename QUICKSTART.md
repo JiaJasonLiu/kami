@@ -70,8 +70,10 @@ That's it — the bot replies to `👋 Gateway online`.
 ## Chat commands
 
 You can also just ask in plain language — e.g. *"search the web for today's
-weather in Tokyo"* (web) or *"every day at 8am, send me a summary of the latest
-Go releases"* (a scheduled cron job that posts itself back to this chat).
+weather in Tokyo"* (web), *"every day at 8am, send me a summary of the latest
+Go releases"* (a scheduled cron job that posts itself back to this chat), or
+*"save how I like my standup notes formatted as a skill"* (a reusable
+instruction file the agent loads whenever it's relevant).
 
 - `/new` — wipe this conversation's memory
 - `/agents` — list agent profiles

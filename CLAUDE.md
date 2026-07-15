@@ -48,6 +48,8 @@ profiles.go                agent profiles: per-agent soul/tools/history/workspac
 topics.go                  forum topic → agent bindings (state/topics.json),
                            per-message routing, topic-name slugify
 tools.go                   tool registry + handlers (the model's only abilities)
+skills.go                  per-agent skill files (state/skills/*.md): catalog in
+                           the system prompt + skill_list/read/write/delete tools
 web.go                     web_search (Brave Search API) + web_fetch
                            (keyless page → text); outbound GET only, no fs/exec
 cron.go                    in-process cron scheduler: 5-field parser, job store
@@ -68,7 +70,7 @@ setup.sh                   LAYER 2: root installer — tg-agent user + hardened
 Runtime state lives under `$KAMI_HOME` (default `.`; `/opt/tg-agent/storage`
 in production). Gateway-level files (`config.json`, `offset.txt`,
 `agent.txt`) live in `state/` and resolve through `statePath()`. Per-agent
-files (`SOUL.md`, `tools.json`, `history.json`) resolve through
+files (`SOUL.md`, `tools.json`, `history.json`, `skills/`) resolve through
 `agentStatePath()` and belong to the active profile: the default agent
 (`kami`) uses the legacy top-level `state/` + `workspace/`, every other
 agent lives under `agents/<name>/{state,workspace}`. Each agent's workspace
@@ -129,6 +131,19 @@ and an agent's history files. Every turn from either source therefore goes
 through `runAgentTurn` (`agent.go`), which holds `turnMu` for the whole
 `handleUserMessage` call. Never call `handleUserMessage` directly from a new
 concurrent path — always route through `runAgentTurn`.
+
+## Skills
+
+Skills (`skills.go`) are per-agent markdown instruction files under the
+agent's `state/skills/` directory, managed by the model through
+`skill_list`/`skill_read`/`skill_write`/`skill_delete`. Every turn,
+`skillsPromptSection()` appends a catalog (name + first plain line of each
+file) to the system prompt after SOUL.md; the model loads full skill text on
+demand with `skill_read`, so many skills stay cheap. Skill names are a
+security boundary like agent names — validated against
+`^[a-z0-9][a-z0-9_-]{0,63}$` before being joined into a path; never relax
+that check. Skills are instructions only: they change model behaviour, never
+the tool set.
 
 ## Commands
 

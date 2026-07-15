@@ -64,7 +64,11 @@ func handleUserMessage(text string) string {
 	if len(decls) > 0 {
 		tools = []gToolDecl{{FunctionDeclarations: decls}}
 	}
-	sys := &gSystemInstruction{Parts: []gPart{{Text: string(soul)}}}
+	sysText := string(soul)
+	if s := skillsPromptSection(); s != "" {
+		sysText += "\n\n" + s
+	}
+	sys := &gSystemInstruction{Parts: []gPart{{Text: sysText}}}
 
 	for step := 0; step < maxToolSteps; step++ {
 		resp, err := callModel(gRequest{SystemInstruction: sys, Contents: history, Tools: tools})
@@ -132,6 +136,10 @@ they say /new.
 - **tools.json** lists the tools you can use. You may edit it with write_tools
   to enable/disable tools or improve their descriptions. (You cannot create
   brand-new abilities — only ones the program already implements will work.)
+- **Skills** are reusable markdown instruction files you can build up over
+  time (skill_write) and load when relevant (skill_read). When your owner
+  teaches you a repeatable procedure, save it as a skill instead of relying
+  on conversation memory.
 
 ## How to behave
 - Be concise and direct. This is a phone chat, not an essay.

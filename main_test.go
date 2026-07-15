@@ -54,8 +54,8 @@ func TestScaffoldAndCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(decls) != 16 {
-		t.Errorf("expected 16 enabled tools, got %d", len(decls))
+	if len(decls) != 20 {
+		t.Errorf("expected 20 enabled tools, got %d", len(decls))
 	}
 	// offline commands shouldn't touch the network
 	if got := handleUserMessage("/help"); got == "" {

@@ -24,7 +24,8 @@ $KAMI_HOME (default: the current directory)
 │   ├── topics.json      forum thread → agent bindings
 │   ├── SOUL.md          the DEFAULT agent's system prompt — it can edit this
 │   ├── tools.json       the default agent's tool registry — it can edit this
-│   └── history.json     the default agent's memory (cleared by /new)
+│   ├── history.json     the default agent's memory (cleared by /new)
+│   └── skills/          the default agent's skill files (one .md per skill)
 ├── workspace/           the default agent's sandbox — its ONLY writable area
 └── agents/              extra agent profiles (created with /agent new)
     └── <name>/
@@ -173,6 +174,8 @@ openai_api_key to sk-…"* — keys are stored `0600` and shown masked.
   page as plain text. See **Internet access** below.
 - `cron_add` / `cron_list` / `cron_remove` — schedule recurring prompts. See
   **Scheduled tasks (cron)** below.
+- `skill_list` / `skill_read` / `skill_write` / `skill_delete` — build up and
+  load reusable instruction files. See **Skills** below.
 - `relay_to_code` — send a prompt to a local code service (e.g. a Claude Code
   wrapper) listening on `http://127.0.0.1:8080/execute` and get the terminal
   output back. The agent itself never runs commands (`os/exec` is not used
@@ -230,6 +233,37 @@ races your conversation.
 
 Try: *"every morning at 8, search the web for the top AI news and send me a
 three-bullet summary"* — it'll call `web_search` inside a `cron_add` job.
+
+## Skills
+
+Skills are per-agent **markdown instruction files** — a lightweight version of
+Claude Code's skills. Where `SOUL.md` is who the agent *is*, a skill is a
+procedure it can *look up*: a report format, a checklist, a style guide, a
+runbook. Each agent keeps its own library under `state/skills/`, one `.md`
+file per skill, and can hold as many as you like:
+
+- The agent's system prompt always includes a **catalog** — every skill's name
+  plus a one-line description (the first plain line of the file) — so the
+  model knows what it has without the full text of every skill flooding its
+  context.
+- When a task matches a skill, the model calls **`skill_read`** to pull the
+  full instructions into context (several at once with a comma-separated
+  list), then follows them.
+- **`skill_write`** creates or updates a skill and **`skill_delete`** removes
+  one, so you can teach it in plain chat:
+
+  ```
+  You:  Whenever I ask for a weekly report, format it as: wins, risks, next
+        steps, each max 3 bullets. Save that as a skill.
+  Bot:  (calls skill_write "weekly-report") Saved — I'll load it whenever you
+        ask for a weekly report.
+  ```
+
+You can also drop `.md` files straight into `state/skills/` (or an agent's
+`agents/<name>/state/skills/`) by hand — they're picked up on the next
+message. Skill names are restricted to `[a-z0-9_-]` (max 64 chars) so a name
+can never smuggle a path, and skills are instructions only: reading one
+changes how the model behaves, never what tools exist.
 
 ## Adding a new tool (when you want one)
 
