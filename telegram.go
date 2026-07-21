@@ -146,7 +146,6 @@ func saveOffset(n int64) {
 // tgSetCommands registers the bot's slash commands with Telegram so they appear in the
 // command menu in the client UI. A local struct is defined inline here — Go allows
 // type declarations inside functions, which is useful for one-off JSON shapes.
-// TODO: this doesn't seem to work. Need to update
 func tgSetCommands() {
 	type tgCommand struct {
 		Command     string `json:"command"`
