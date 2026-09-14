@@ -19,9 +19,12 @@ import (
 	"time"
 )
 
-// ServiceURL is the endpoint of the host-level code service. It is a
-// package variable (not a constant) so tests can point it at an
-// httptest.Server; production code should leave it untouched.
+// ServiceURL is the endpoint of the code service. It defaults to the
+// loopback host-level service, but main() overrides it from the
+// KAMI_CODE_SERVICE_URL environment variable so the two-container Docker
+// setup can point the gateway at a sibling "code-service" container over the
+// compose network (e.g. http://code-service:8080/execute). It is a package
+// variable (not a constant) so tests can also point it at an httptest.Server.
 var ServiceURL = "http://127.0.0.1:8080/execute"
 
 // httpClient is shared across calls so connections are reused. The long

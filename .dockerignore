@@ -1,0 +1,16 @@
+# Keep the gateway build context small and — crucially — never bake runtime
+# state or secrets (config.json holds API keys) into the image. These are
+# bind-mounted at runtime instead.
+.git
+.gitignore
+dist/
+kami-gateway
+state/
+workspace/
+agents/
+.env
+.env.*
+sidecar/node_modules/
+code-service/node_modules/
+docker-compose.yml
+Dockerfile

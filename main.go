@@ -9,6 +9,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+
+	"kami-gateway/internal/coderelay"
 )
 
 var home string
@@ -55,6 +57,13 @@ func ensureScaffold() error {
 func main() {
 	log.SetFlags(log.Ltime)
 	home = orDefault(os.Getenv("KAMI_HOME"), ".")
+
+	// In the two-container Docker setup the code service is a sibling
+	// container, not a loopback process, so allow the endpoint to be
+	// redirected. Left unset, coderelay keeps its 127.0.0.1:8080 default.
+	if u := os.Getenv("KAMI_CODE_SERVICE_URL"); u != "" {
+		coderelay.ServiceURL = u
+	}
 
 	if err := ensureDirs(); err != nil {
 		log.Fatalf("could not create directories: %v", err)

@@ -438,7 +438,7 @@ const defaultTools = `{
     },
     {
       "name": "relay_to_code",
-      "description": "Send a prompt to the local code service (Claude Code wrapper on 127.0.0.1:8080) and get back the terminal output. Use for coding and automation tasks that need the development environment.",
+      "description": "Send a prompt to the code service (a Claude Code repository wrapper; loopback by default, or a sibling container via KAMI_CODE_SERVICE_URL) and get back the terminal output. Use for coding and automation tasks — including editing this repo and opening pull requests — that need the development environment.",
       "enabled": true,
       "parameters": {
         "type": "object",

@@ -1,0 +1,74 @@
+# Two-container kami setup, portable to any OS with Docker.
+#
+#   kami          - the gateway. Data-only mounts, no repo source, no shell for
+#                   the model. Talks to code-service over this compose network.
+#   code-service  - Claude Code CLI wrapper. The WHOLE repo is mounted rw here,
+#                   with git + gh, so kami can edit its own code and open PRs.
+#
+# First run:
+#   mkdir -p state workspace agents        # avoid root-owned dirs
+#   cp .env.example .env                   # set KAMI_UID/GID, GH_TOKEN, keys
+#   docker compose build
+#   docker compose run --rm kami setup     # first-run wizard -> state/config.json
+#   docker compose up -d
+
+services:
+  kami:
+    build: .
+    image: kami-gateway:latest
+    container_name: kami-gateway
+    restart: unless-stopped
+    depends_on:
+      - code-service
+
+    # Run as the host user so bind-mounted files stay owned by you (not root).
+    # Set KAMI_UID / KAMI_GID in .env to your `id -u` / `id -g` (defaults 1000).
+    user: "${KAMI_UID:-1000}:${KAMI_GID:-1000}"
+
+    environment:
+      KAMI_HOME: /data
+      # Redirect the `code` tool from its loopback default to the sibling
+      # container. This is the only reason the gateway needs a non-loopback URL.
+      KAMI_CODE_SERVICE_URL: http://code-service:8080/execute
+      # Optional: match your host clock for cron schedules.
+      # TZ: ${TZ:-UTC}
+
+    # Only mutable STATE is mounted here — never the repo source. Edits the
+    # agent makes through chat (SOUL.md, tools.json, files it writes) land in
+    # these dirs, and config + API keys persist across image rebuilds.
+    volumes:
+      - ./state:/data/state
+      - ./workspace:/data/workspace
+      - ./agents:/data/agents
+
+    # No `ports:` — the gateway only makes outbound connections.
+
+  code-service:
+    build: ./code-service
+    image: kami-code-service:latest
+    container_name: kami-code-service
+    restart: unless-stopped
+
+    # Same host user so branches/commits it creates in /repo stay owned by you.
+    # HOME must be writable for git/gh config (the user may have no home dir).
+    user: "${KAMI_UID:-1000}:${KAMI_GID:-1000}"
+
+    environment:
+      HOME: /tmp
+      PORT: "8080"
+      REPO_DIR: /repo
+      # Claude Code auth: a subscription login isn't reachable in a container,
+      # so use an API key here.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # GitHub auth for `git push` + `gh pr create`.
+      GH_TOKEN: ${GH_TOKEN:-}
+      GITHUB_TOKEN: ${GH_TOKEN:-}
+      # Commit identity for kami's self-PRs.
+      GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-kami-bot}
+      GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-kami-bot@users.noreply.github.com}
+
+    # The WHOLE project, read-write. This is what lets kami change its own code.
+    volumes:
+      - ./:/repo
+
+    # No `ports:` — reachable only from the kami container over this network.

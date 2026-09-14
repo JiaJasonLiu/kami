@@ -5,8 +5,9 @@ one chat, your choice of AI provider (Gemini, OpenAI, Anthropic, OpenRouter,
 the Claude Agent SDK on your Claude subscription, or a local
 OpenAI-compatible model). The model gets a `SOUL.md` (its system
 prompt, which it can rewrite), a sandboxed `workspace/` it can't escape, and a
-few tools defined in `tools.json` (which it can also edit). No Docker, no
-database, no web UI, zero external Go dependencies.
+few tools defined in `tools.json` (which it can also edit). No database, no web
+UI, zero external Go dependencies — runs directly on the host, or in Docker if
+you want it (see [Run with Docker](#run-with-docker-any-os)).
 
 Built in the "Kami" spirit: a presence that inhabits the tool, shaped by use. One bounded agent loop, no cleverness. Integrate it in your everyday tasks.
 
@@ -73,6 +74,42 @@ make build
 
 It long-polls Telegram (no inbound port, no public IP). Message your bot and it
 replies. Only your configured chat id is answered; everyone else is ignored.
+
+### Run with Docker (any OS)
+
+For a portable, OS-independent install, `docker compose` runs kami as **two
+containers** that mirror the on-host sandbox model:
+
+- **`kami`** — the gateway. Only `state/`, `workspace/` and `agents/` are
+  bind-mounted; the repo source is *not*. It has no shell for the model and no
+  `os/exec`. Everything the agent edits through chat, plus your config and keys,
+  lives on the host and survives rebuilds.
+- **`code-service`** — a Claude Code CLI wrapper with the **whole repo mounted
+  read-write** plus `git` + `gh`. This is what lets kami edit its own code and
+  open pull requests. The gateway reaches it over the compose network via
+  `KAMI_CODE_SERVICE_URL` (it answers the same `/execute` contract the `code`
+  tool has always used); it publishes no host ports.
+
+```sh
+mkdir -p state workspace agents      # avoid root-owned dirs
+cp .env.example .env                 # set KAMI_UID/GID, ANTHROPIC_API_KEY, GH_TOKEN
+docker compose build
+docker compose run --rm kami setup   # first-run wizard -> state/config.json
+docker compose up -d
+docker compose logs -f
+```
+
+`.env` supplies the code-service's `ANTHROPIC_API_KEY` (a subscription login
+can't be reached inside a container) and a `GH_TOKEN` (a PAT with `contents` +
+`pull_requests` scope) so it can push branches and open PRs. Both containers run
+as your host uid/gid, so files they create stay owned by you.
+
+Security note: separating the two containers keeps the gateway confined exactly
+as it is on the host — it never touches the repo source. The `code-service`
+container is the one privileged execution boundary (that is its whole job), and
+the container itself is the sandbox: only the repo is mounted, nothing on the
+host. The **`claude-sdk`** provider is still host-only (it needs a subscription
+login and bubblewrap); every API provider works in the container as-is.
 
 ---
 
