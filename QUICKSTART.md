@@ -1,7 +1,8 @@
 # Quick start
 
 Get kami-gateway talking to you on Telegram in a few minutes. Everything runs
-on one machine — no Docker, no database.
+on one machine — no database. (Prefer containers? See "Run with Docker" in the
+README.)
 
 ## 1. Get your keys
 
