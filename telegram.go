@@ -154,6 +154,7 @@ func tgSetCommands() {
 	payload, _ := json.Marshal(map[string]interface{}{
 		"commands": []tgCommand{
 			{"new", "Wipe conversation memory and start fresh"},
+			{"claude", "Use the Claude Agent SDK (subscription session usage)"},
 			{"agents", "List agent profiles"},
 			{"agent", "Create/switch/delete agent profiles"},
 			{"help", "List available commands"},

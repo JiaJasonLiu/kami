@@ -62,6 +62,7 @@ func main() {
 	loadActiveAgent()
 	loadTopicBindings()
 	loadCronJobs()
+	loadClaudeSessions()
 
 	forceSetup := len(os.Args) > 1 && (os.Args[1] == "setup" || os.Args[1] == "--setup")
 	exists, err := loadConfig()

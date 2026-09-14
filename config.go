@@ -12,8 +12,8 @@ import (
 
 type Config struct {
 	// Provider selects the active AI backend: gemini (default), openai,
-	// anthropic, openrouter, or local. Each backend keeps its own key/model
-	// below so switching never discards credentials.
+	// anthropic, openrouter, local, or claude-sdk. Each backend keeps its own
+	// key/model below so switching never discards credentials.
 	Provider string `json:"provider,omitempty"`
 
 	// Gemini (Google AI Studio).
@@ -33,6 +33,14 @@ type Config struct {
 	// OpenRouter (OpenAI-compatible aggregator).
 	OpenRouterAPIKey string `json:"openrouter_api_key,omitempty"`
 	OpenRouterModel  string `json:"openrouter_model,omitempty"`
+
+	// Claude Agent SDK, driven through the loopback sidecar in
+	// internal/claudesdk. This provider uses the operator's Claude
+	// **subscription session usage** rather than an API key, so it has no key
+	// field at all — authentication lives in the sidecar's `claude` login.
+	ClaudeSDKURL      string `json:"claude_sdk_url,omitempty"`
+	ClaudeSDKModel    string `json:"claude_sdk_model,omitempty"`
+	ClaudeSDKMaxTurns int    `json:"claude_sdk_max_turns,omitempty"`
 
 	// Local OpenAI-compatible server (Ollama, LM Studio, llama.cpp, vLLM…).
 	LocalBaseURL string `json:"local_base_url,omitempty"`
@@ -95,7 +103,7 @@ func runSetup() error {
 	fmt.Println("(everything is stored locally under ./state — nothing leaves this machine except calls to your AI provider, Telegram, and any web pages the agent looks up)")
 	fmt.Println()
 
-	cfg.Provider = strings.ToLower(strings.TrimSpace(prompt(in, "AI provider (gemini/openai/anthropic/openrouter/local)", orDefault(cfg.Provider, "gemini"))))
+	cfg.Provider = strings.ToLower(strings.TrimSpace(prompt(in, "AI provider (gemini/openai/anthropic/openrouter/local/claude-sdk)", orDefault(cfg.Provider, "gemini"))))
 	switch cfg.Provider {
 	case "", "gemini":
 		cfg.Provider = "gemini"
@@ -111,6 +119,12 @@ func runSetup() error {
 	case "openrouter":
 		cfg.OpenRouterAPIKey = strings.TrimSpace(prompt(in, "OpenRouter API key", cfg.OpenRouterAPIKey))
 		cfg.OpenRouterModel = strings.TrimSpace(prompt(in, "OpenRouter model", orDefault(cfg.OpenRouterModel, "openai/gpt-4o-mini")))
+	case "claude-sdk":
+		fmt.Println("  claude-sdk uses your Claude subscription (session usage), not an API key.")
+		fmt.Println("  It needs the sidecar running on this host — see README.md — and a")
+		fmt.Println("  `claude` CLI already logged in with `claude /login`.")
+		cfg.ClaudeSDKURL = strings.TrimSpace(prompt(in, "Claude SDK sidecar URL", orDefault(cfg.ClaudeSDKURL, defaultClaudeSDKURL)))
+		cfg.ClaudeSDKModel = strings.TrimSpace(prompt(in, "Claude model (alias or id, blank for the SDK default)", cfg.ClaudeSDKModel))
 	case "local":
 		cfg.LocalBaseURL = strings.TrimSpace(prompt(in, "Local server base URL", orDefault(cfg.LocalBaseURL, "http://localhost:11434/v1")))
 		cfg.LocalModel = strings.TrimSpace(prompt(in, "Local model name", orDefault(cfg.LocalModel, "llama3.1")))

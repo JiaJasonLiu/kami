@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"kami-gateway/internal/claudesdk"
 )
 
 // Multi-provider support. The agent loop speaks one internal request/response
@@ -16,12 +18,15 @@ import (
 // backend). callModel dispatches that request to whichever provider is
 // configured, translating to and from each provider's own wire format.
 //
-// Three client implementations cover five providers:
+// Four client implementations cover six providers:
 //   - gemini      -> callGemini (gemini.go)
 //   - openai      -\
 //   - openrouter   -> openaiGenerate (OpenAI Chat Completions format)
 //   - local       -/  (Ollama / LM Studio / llama.cpp / vLLM, etc.)
 //   - anthropic   -> anthropicGenerate (Anthropic Messages format)
+//   - claude-sdk  -> callClaudeSDK (claudesdk.go) — the Claude Agent SDK over
+//                    a loopback sidecar, billed to a subscription seat's
+//                    session usage rather than to an API key
 //
 // Provider selection is global (cfg.Provider) and switchable at runtime via
 // set_config. Each provider keeps its own key/model in config so switching
@@ -35,7 +40,7 @@ var (
 // modelConfig is the resolved, ready-to-call description of the active model:
 // which client kind to use, the endpoint base, the API key, and the model id.
 type modelConfig struct {
-	kind    string // "gemini" | "openai" | "anthropic"
+	kind    string // "gemini" | "openai" | "anthropic" | "claude-sdk"
 	baseURL string
 	apiKey  string
 	model   string
@@ -72,6 +77,15 @@ func activeModel() (modelConfig, error) {
 			return mc, fmt.Errorf("local provider needs local_model (and local_base_url if not Ollama's default)")
 		}
 		return mc, nil
+	case "claude-sdk":
+		// No key to validate: this provider authenticates as the operator's
+		// Claude login inside the sidecar, and consumes subscription session
+		// usage. The model may be blank, letting the SDK pick its default.
+		return modelConfig{
+			kind:    "claude-sdk",
+			baseURL: orDefault(cfg.ClaudeSDKURL, defaultClaudeSDKURL),
+			model:   orDefault(cfg.ClaudeSDKModel, "(SDK default)"),
+		}, nil
 	case "anthropic":
 		mc := modelConfig{kind: "anthropic", baseURL: orDefault(cfg.AnthropicBaseURL, "https://api.anthropic.com"), apiKey: cfg.AnthropicAPIKey, model: cfg.AnthropicModel}
 		if mc.apiKey == "" || mc.model == "" {
@@ -79,7 +93,7 @@ func activeModel() (modelConfig, error) {
 		}
 		return mc, nil
 	default:
-		return modelConfig{}, fmt.Errorf("unknown provider %q (use gemini, openai, anthropic, openrouter, or local)", cfg.Provider)
+		return modelConfig{}, fmt.Errorf("unknown provider %q (use gemini, openai, anthropic, openrouter, local, or claude-sdk)", cfg.Provider)
 	}
 }
 
@@ -96,6 +110,11 @@ func callModel(req gRequest) (*gResponse, error) {
 		return withRetry(orDefault(cfg.Provider, "openai"), func() (*gResponse, bool, error) { return openaiOnce(mc, req) })
 	case "anthropic":
 		return withRetry("anthropic", func() (*gResponse, bool, error) { return anthropicOnce(mc, req) })
+	case "claude-sdk":
+		// No withRetry here: the SDK runs a whole agentic session per call, so
+		// a blind retry could repeat side effects it already performed.
+		claudesdk.ServiceURL = mc.baseURL
+		return callClaudeSDK(req)
 	default:
 		return nil, fmt.Errorf("unsupported model kind %q", mc.kind)
 	}

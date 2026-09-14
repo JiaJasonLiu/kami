@@ -1,14 +1,38 @@
-BINARY   := kami-gateway
-MAC_PLIST := $(HOME)/Library/LaunchAgents/com.kami.gateway.plist
+BINARY := kami-gateway
+SIDECAR := sidecar/claude-sdk-service.js
+SIDECAR_PORT ?= 8081
 
-.PHONY: build run setup test fmt vet clean dist \
-        mac-install mac-start mac-stop mac-restart mac-logs
+.PHONY: build run run-gateway sidecar setup test fmt vet clean dist
 
 build:
 	go build -o $(BINARY) .
 
+# `make run` starts the Claude SDK sidecar alongside the gateway, so the
+# claude-sdk provider works out of the box, and stops it again on exit. The
+# sidecar is optional — every other provider runs fine without it — so a
+# missing `node` is a warning, not a failure.
 run: build
+	@if [ -z "$$(command -v node)" ]; then \
+		echo "note: node not found — starting without the Claude SDK sidecar"; \
+		echo "      (the claude-sdk provider will be unavailable)"; \
+		./$(BINARY); \
+	elif node -e 'require("net").connect($(SIDECAR_PORT),"127.0.0.1").on("connect",()=>process.exit(0)).on("error",()=>process.exit(1))' 2>/dev/null; then \
+		echo "note: something already listens on 127.0.0.1:$(SIDECAR_PORT) — reusing it"; \
+		./$(BINARY); \
+	else \
+		PORT=$(SIDECAR_PORT) node $(SIDECAR) & \
+		sidecar_pid=$$!; \
+		trap "kill $$sidecar_pid 2>/dev/null" EXIT INT TERM; \
+		./$(BINARY); \
+	fi
+
+# The gateway on its own, for when the sidecar is already supervised elsewhere.
+run-gateway: build
 	./$(BINARY)
+
+# The sidecar on its own, in the foreground.
+sidecar:
+	PORT=$(SIDECAR_PORT) node $(SIDECAR)
 
 setup: build
 	./$(BINARY) setup
